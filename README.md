@@ -1,8 +1,8 @@
 # Sternenschleuder
 
-Ein 3D-Browserspiel im Stil von *Rocket Fling* (CrazyGames): Rakete in die Schleuder legen, im richtigen Moment abschießen, mit Schub geradeaus nach oben fliegen, Treibstoff und Münzen sammeln und zwischen den Flügen aufrüsten. Ziel ist die Heliopause am Rand des Sonnensystems.
 
-Name, Grafik und Oberfläche sind eigenständig. Alle Modelle, Texturen und Sounds werden im Browser erzeugt.
+
+Name, Grafik und Oberfläche sind eigenständig. Alle Modelle, Texturen und Sounds 
 
 ## Spielen
 
