@@ -6,7 +6,7 @@ Name, Grafik und Oberfläche sind eigenständig. Alle Modelle, Texturen und Soun
 
 ## Spielen
 
-Online spielen: **https://brunder3.github.io/sternenschleuder/** (veröffentlicht aus dem öffentlichen Repo `brunder3/sternenschleuder`).
+Online spielen: **https://brunder3.github.io/sternenschleuder/**
 
 Oder `index.html` im Browser öffnen, per Doppelklick. Es gibt keinen Build-Schritt und keine Installation. three.js liegt als Datei unter `vendor/`, das Spiel läuft also auch offline. Der Spielstand wird automatisch im `localStorage` des Browsers gespeichert.
 
@@ -53,6 +53,7 @@ Die Rakete fliegt immer geradeaus. Gelenkt wird nur die Neigung der Nase.
 | `js/world.js` | Renderer, Himmel, Gelände, Wolken, Partikel und Weltraumkulisse |
 | `js/game.js` | Spielablauf, Eingabe, Kamera, HUD und Menüs |
 | `vendor/three.min.js` | three.js r159 (MIT-Lizenz, siehe `vendor/three.LICENSE`) |
+| `.github/workflows/pages.yml` | Veröffentlicht das Spiel bei jedem Push auf `main` über GitHub Pages |
 | `vendor/three-extras.min.js` | Zusätze aus three.js r159 (EffectComposer, Bloom, OutputPass, GLTFLoader, MeshoptDecoder), als klassisches Skript gebündelt |
 
 Weil `js/core.js` ohne Browser auskommt, lässt sich das Balancing mit Node simulieren: Ein Bot fliegt, verdient und kauft ein. Die Preise sind so abgestimmt, dass ein Bot etwa 140 Flüge bis zur Heliopause und etwa 230 bis Andromeda braucht. Jenseits der Heliopause werden Treibstoffkanister seltener, damit dort Tank und Triebwerk über die Reichweite entscheiden.
