@@ -12,6 +12,8 @@ Oder `index.html` im Browser öffnen, per Doppelklick. Es gibt keinen Build-Schr
 
 ## Grafik
 
+Himmel, Boden (Gras, Fels, Sand, Erde), Wolken, Wasser, die Milchstraße sowie Erde und Mond aus dem All sind echte Fotos. Sie stecken eingebettet in `js/photos.js`, damit das Spiel auch offline per Doppelklick läuft. Die Münzen sind geprägtes Metall mit Rand und Stern, das den Himmel spiegelt.
+
 Auf Computern läuft die volle Grafik mit Bloom (leuchtende Flammen, Sonne und Sterne), Kantenglättung und Spiegelungen des Himmels auf Wasser und Raketenlack. Auf Handys und schwächeren Geräten fällt der Bloom weg, damit das Spiel flüssig bleibt. Mit `?grafik=hoch` oder `?grafik=niedrig` hinter der Adresse lässt sich die Stufe erzwingen.
 
 ## Steuerung
@@ -41,6 +43,7 @@ Die Rakete fliegt immer geradeaus. Gelenkt wird nur die Neigung der Nase.
 | Datei | Inhalt |
 | --- | --- |
 | `index.html` | Oberfläche und Styles |
+| `js/photos.js` | Eingebettete Fotos (siehe Bildnachweis) |
 | `js/core.js` | Daten (Zonen, Upgrades, Raketen, Missionen), Formeln und Flugphysik, ohne DOM und WebGL |
 | `js/audio.js` | Soundeffekte mit der Web Audio API |
 | `js/models.js` | 3D-Modelle und prozedurale Texturen |
@@ -51,3 +54,9 @@ Die Rakete fliegt immer geradeaus. Gelenkt wird nur die Neigung der Nase.
 | `vendor/three-extras.min.js` | Nachbearbeitung aus three.js r159 (EffectComposer, Bloom, OutputPass), als klassisches Skript gebündelt |
 
 Weil `js/core.js` ohne Browser auskommt, lässt sich das Balancing mit Node simulieren: Ein Bot fliegt, verdient und kauft ein. Die Preise sind so abgestimmt, dass ein Bot etwa 140 Flüge bis zur Heliopause und etwa 230 bis Andromeda braucht. Jenseits der Heliopause werden Treibstoffkanister seltener, damit dort Tank und Triebwerk über die Reichweite entscheiden.
+
+## Bildnachweis
+
+- Himmel (Skybox), Gras, Fels, Sand, Erde, Milchstraße und Wasserwellen: [Babylon.js Assets](https://github.com/BabylonJS/Assets), Lizenz [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+- Erde, Wolken der Erde und Mond: NASA-Aufnahmen aus den Beispielen von [three.js](https://github.com/mrdoob/three.js) (MIT-Lizenz)
+- Quellwolke: [Poly Haven](https://polyhaven.com) über [@pmndrs/assets](https://github.com/pmndrs/assets), CC0
