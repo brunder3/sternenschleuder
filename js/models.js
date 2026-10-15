@@ -621,7 +621,7 @@ const Models = (() => {
         '  vec3 col = mix(vec3(0.85, 0.18, 0.6), vec3(1.0, 0.42, 0.12), smoothstep(0.15, 0.55, front));',
         '  col = mix(col, vec3(1.0, 0.78, 0.45), smoothstep(0.8, 1.0, front));',
         '  float flick = 0.8 + 0.2 * sin(time * 37.0 + vUv.x * 40.0) * sin(time * 23.0 - vUv.y * 17.0);',
-        '  float a = alpha * flick * (0.4 + 1.1 * pow(vRim, 1.5) + 0.9 * smoothstep(0.8, 1.0, front)) * smoothstep(0.0, 0.35, front);',
+        '  float a = alpha * flick * (0.6 + 1.4 * pow(vRim, 1.5) + 1.0 * smoothstep(0.8, 1.0, front)) * smoothstep(0.0, 0.35, front);',
         '  gl_FragColor = vec4(col * 1.35, a);',
         '}'].join('\n'),
       transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide, toneMapped: false,
@@ -637,7 +637,7 @@ const Models = (() => {
         '  float streak = 0.45 + 0.55 * sin(vUv.x * 60.0 + time * 13.0 + along * 11.0) * sin(vUv.x * 23.0 - time * 7.0);',
         '  vec3 col = mix(vec3(0.6, 0.18, 0.75), vec3(1.0, 0.5, 0.2), pow(along, 2.0));',
         '  float core = 1.0 - 0.75 * vRim;',                          // a glowing gas column is brightest down its middle
-        '  gl_FragColor = vec4(col * 1.3, alpha * pow(along, 2.4) * max(streak, 0.15) * core * 0.45);',
+        '  gl_FragColor = vec4(col * 1.4, alpha * pow(along, 2.0) * max(streak, 0.2) * core * 0.65);',
         '}'].join('\n'),
       transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide, toneMapped: false,
     });
@@ -645,7 +645,7 @@ const Models = (() => {
     wake.position.y = -L / 2 - L * 1.3 + L * 0.1;
     g.add(wake);
     const hot = new T.Sprite(glowMat(0xff6a2a, 0));
-    hot.scale.set(R * 12, R * 12, 1); hot.position.y = L / 2 + R * 0.3; g.add(hot);
+    hot.scale.set(R * 16, R * 16, 1); hot.position.y = L / 2 + R * 0.3; g.add(hot);
     g.visible = false;
     g.userData.mats = [shellMat, wakeMat];
     g.userData.hot = hot;
