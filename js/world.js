@@ -422,14 +422,24 @@ const World = (() => {
   // ---------- sky & backdrop ----------
   function buildSky() {
     skyMat = new T.ShaderMaterial({
-      uniforms: { top: { value: new T.Color() }, mid: { value: new T.Color() }, hor: { value: new T.Color() }, sunDir: { value: sunDir }, space: { value: 0 } },
+      uniforms: { top: { value: new T.Color() }, mid: { value: new T.Color() }, hor: { value: new T.Color() }, sunDir: { value: sunDir }, space: { value: 0 }, limb: { value: 0 }, dip: { value: 0 }, limbW: { value: 0.2 } },
       vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
       fragmentShader: [
-        'uniform vec3 top; uniform vec3 mid; uniform vec3 hor; uniform vec3 sunDir; uniform float space; varying vec3 vDir;',
+        'uniform vec3 top; uniform vec3 mid; uniform vec3 hor; uniform vec3 sunDir; uniform float space; uniform float limb; uniform float dip; uniform float limbW; varying vec3 vDir;',
         'void main(){',
-        '  float y = vDir.y;',
+        '  vec3 dir = normalize(vDir);',
+        '  float y = dir.y;',
         '  vec3 c = y > 0.0 ? mix(mix(hor, mid, smoothstep(0.0, 0.28, y)), top, smoothstep(0.25, 0.85, y)) : mix(hor, hor * 0.82, smoothstep(0.0, -0.4, y));',
-        '  float s = max(dot(normalize(vDir), sunDir), 0.0);',
+        '  float s = max(dot(dir, sunDir), 0.0);',
+        // near space: the sky overhead is black and the air is a thin glowing band sitting on the curved
+        // horizon, which sinks below eye level as the rocket climbs (dip); brightest toward the Sun
+        '  float e = asin(clamp(y, -1.0, 1.0)) + dip;',
+        '  float band = e >= 0.0 ? exp(-e / limbW) : exp(e / (limbW * 0.18));',
+        '  vec3 fdir = normalize(vec3(dir.x, 0.0001, dir.z)), sflat = normalize(vec3(sunDir.x, 0.0001, sunDir.z));',
+        '  float toSun = 0.5 + 0.5 * dot(fdir, sflat);',
+        '  vec3 air = mix(vec3(0.16, 0.36, 0.86), vec3(0.42, 0.68, 1.0), toSun) * band + vec3(1.0, 0.62, 0.36) * pow(toSun, 6.0) * band * band * 0.35;',
+        '  vec3 above = mix(top, vec3(0.004, 0.006, 0.02), 0.6);',
+        '  c = mix(c, above * (1.0 - band) + air, limb);',
         '  c += vec3(1.0, 0.93, 0.78) * (pow(s, 8.0) * 0.22 * (1.0 - space) + pow(s, 90.0) * 0.5);',
         '  gl_FragColor = vec4(c, 1.0);',
         '  #include <colorspace_fragment>',
@@ -497,6 +507,7 @@ const World = (() => {
     bgSunLight = new T.DirectionalLight(0xffffff, 2.6); bgSunLight.position.copy(sunDir); bgScene.add(bgSunLight);
     bgScene.add(new T.AmbientLight(0x404a66, 0.6));
     earth = Models.planet('earth', 1000); earth.visible = false; earth.rotation.set(1.15, 0, 0.35); bgScene.add(earth);
+    earth.traverse(o => { if (o.userData.atmosphere) o.material.uniforms.sunDir.value = sunDir; });
     earthGlow = new T.Sprite(new T.SpriteMaterial({ map: Models.TEX.glow, color: 0x7cc4ff, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false }));
     earthGlow.visible = false; earthGlow.renderOrder = -1; bgScene.add(earthGlow);
     for (const [k, r0] of [['moon', 1000], ['mars', 1000], ['jupiter', 1000], ['saturn', 1000]]) {
@@ -629,7 +640,7 @@ const World = (() => {
   }
 
   // ---------- per-frame ----------
-  const _sky = [new T.Color(), new T.Color(), new T.Color()], _fogPhoto = new T.Color('#a3b6c4');
+  const _sky = [new T.Color(), new T.Color(), new T.Color()], _fogPhoto = new T.Color('#a3b6c4'), _limbFog = new T.Color('#5f8fd8');
   let skyStops = null;
   function skyAt(Hu) {
     if (!skyStops) skyStops = SKY_STOPS.map(s => ({ H: s.H, c: s.c.map(x => new T.Color(x)) }));
@@ -651,10 +662,11 @@ const World = (() => {
       if (tr !== was) { m.transparent = tr; m.needsUpdate = true; }
     }
   }
-  // Earth seen from the rocket: altitude in Earth radii at each zone height. It stays a flat horizon
-  // while the terrain is still drawn, then shrinks to a globe and a distant dot at the Heliopause.
-  // (x = height / ZH.meso: 2.15 end of the terrain fade, 2.59 geostationary, 3.55 Moon, 4.86 Mars, 17.1 Heliopause)
-  const EARTH_HV = [[0.9, 0.0025], [1.6, 0.006], [2.15, 0.015], [2.59, 0.15], [3.0, 0.6], [3.55, 2], [4.86, 8], [6.66, 20], [9.13, 40], [12.48, 70], [17.1, 120]];
+  // Earth seen from the rocket: altitude in Earth radii at each zone height. Up to low orbit it follows the
+  // real altitude (30 km, 50 km, 100 km, 400 km), farther out it is compressed so the globe stays in view
+  // and shrinks to a distant dot at the Heliopause.
+  // (x = height / ZH.meso: 1.375 Karman line, 1.89 low orbit, 2.59 geostationary, 3.55 Moon, 4.86 Mars, 17.1 Heliopause)
+  const EARTH_HV = [[0.9, 0.0046], [1.0, 0.0078], [1.375, 0.0157], [1.89, 0.063], [2.59, 0.15], [3.0, 0.6], [3.55, 2], [4.86, 8], [6.66, 20], [9.13, 40], [12.48, 70], [17.1, 120]];
   function earthHv(Hu) {
     const x = Hu / ZH.meso, A = EARTH_HV;
     if (x <= A[0][0]) return A[0][1];
@@ -677,19 +689,31 @@ const World = (() => {
     skyMat.uniforms.top.value.copy(sky[0]); skyMat.uniforms.mid.value.copy(sky[1]); skyMat.uniforms.hor.value.copy(sky[2]);
     const space = smooth(ZH.meso, zoneFrac('space', 0.4), Hu);
     skyMat.uniforms.space.value = space;
+    // the limb of the atmosphere: from the stratosphere up the sky turns black overhead, the air shrinks to
+    // a band over the horizon; it fades again once the Earth is a globe (its own shell takes over)
+    const limb = smooth(zoneFrac('jet', 0.4), zoneFrac('meso', 0.4), Hu) * (1 - smooth(zoneFrac('orbit', 0.3), ZH.geo, Hu));
+    const hvR = Hu > ZH.meso * 0.9 ? earthHv(Hu) : altitudeAt(Hu) / 6.371e6;
+    skyMat.uniforms.limb.value = limb;
+    skyMat.uniforms.dip.value = Math.acos(1 / (1 + hvR));
+    skyMat.uniforms.limbW.value = lerp(0.3, 0.05, smooth(zoneFrac('jet', 0.4), ZH.space, Hu));
     updateEnv(Hu, t);
     // fog: the haze thins out with altitude; terrain disappears once we are in space
-    scene.fog.color.copy(sky[2]);
+    scene.fog.color.copy(sky[2]).lerp(_limbFog, limb * 0.7);
     if (photoSky) {
-      const f = 1 - smooth(ZH.jet, zoneFrac('strato', 0.5), Hu);
+      const f = 1 - smooth(zoneFrac('wolken', 0.7), zoneFrac('jet', 0.7), Hu);
       photoSky.material.uniforms.fade.value = f; photoSky.visible = f > 0.002;
       scene.fog.color.lerp(_fogPhoto, f);
     }
     // fog ends before the edge of the loaded terrain ring (2700 units to the side and behind)
     scene.fog.near = Math.min(420 + cy * 2.5, 1700);
     scene.fog.far = Math.min(2550 + cy * 1.2, 3000);
+    // aerial perspective: seen from the stratosphere and higher the land sinks into blue haze
+    const haze = smooth(ZH.jet, ZH.meso, Hu);
+    scene.fog.near = lerp(scene.fog.near, 60, haze * 0.85);
+    scene.fog.far = lerp(scene.fog.far, 1500, haze);
     // high up the ground fades into the Earth of the backdrop instead of vanishing at once
-    const groundFade = 1 - smooth(ZH.space * S * 1.08, ZH.space * S * 1.56, cy);
+    // from the mesosphere up the land hands over to the Earth globe of the backdrop (gone by ~85 km)
+    const groundFade = 1 - smooth(ZH.meso, zoneFrac('meso', 0.75), Hu);
     const groundVis = groundFade > 0.001;
     setGroundFade(groundFade);
     water.visible = groundVis;
@@ -713,7 +737,7 @@ const World = (() => {
     sunCore.scale.setScalar(lerp(260, 420, space) * (0.4 + 0.6 * far) * (1 - 0.85 * gone));
     sunSprite.material.opacity = lerp(0.7, 0.45, space) * (1 - 0.95 * gone);
     aurora.material.uniforms.time.value = t;
-    aurora.material.uniforms.alpha.value = smooth(zoneFrac('meso', -0.15), zoneFrac('meso', 0.35), Hu) * (1 - smooth(zoneFrac('space', 0.2), zoneFrac('space', 0.8), Hu));
+    aurora.material.uniforms.alpha.value = 0.7 * smooth(zoneFrac('meso', 0.45), ZH.space, Hu) * (1 - smooth(zoneFrac('space', 0.3), zoneFrac('space', 0.9), Hu));
     aurora.visible = aurora.material.uniforms.alpha.value > 0.01;
     // Earth: a horizon below at first, then a shrinking globe ahead and below
     if (Hu > ZH.meso * 0.9 && Hu < ZH.oort) {
@@ -726,7 +750,8 @@ const World = (() => {
       // the home continent stays below while the Earth is still a horizon, then the globe turns
       earth.userData.sphere.rotation.y += dt * 0.01 * smooth(0.2, 2, hv);
       earthGlow.position.copy(earth.position); earthGlow.scale.setScalar(2900);
-      earthGlow.material.opacity = 0.75;
+      // the soft halo only belongs to a distant globe; close up it would wash the view out
+      earthGlow.material.opacity = 0.35 * smooth(0.05, 0.6, hv);
     } else { earth.visible = false; earthGlow.visible = false; earth.userData.sphere.rotation.y = 0; }
     // planets pass by as the altitude climbs through their zones
     const BODIES = [['moon', ZH.moon, ZH.mars - ZH.moon, 0.27, 0.42], ['mars', ZH.mars, ZH.belt - ZH.mars, 0.21, -0.45], ['jupiter', ZH.jupiter, ZH.saturn - ZH.jupiter, 0.42, 0.5], ['saturn', ZH.saturn, ZH.edge - ZH.saturn, 0.3, -0.5]];
