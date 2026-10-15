@@ -227,6 +227,8 @@
   function fireTurbo() {
     const r = G.rocket;
     if (!r || G.state !== 'flight' || G.paused || r.turbo <= 0 || r.turboT > 0) return;
+    // a turbo fired during the re-entry hands the rocket back to the flight physics
+    if (G.reentry) { G.reentry = null; G.descendT = 0; r.a = Math.atan2(r.vy, r.vx); }
     r.turbo--; r.turboT = PHYS.TURBO_TIME; G.run.turbos++;
     const sp = Math.hypot(r.vx, r.vy);
     r.vx += Math.cos(r.a) * (120 + sp * 0.12); r.vy += Math.sin(r.a) * (120 + sp * 0.12);
@@ -282,7 +284,8 @@
       G.descendT += dt;
       // only skip the long fall when nothing can happen any more (no turbo, no bounce left);
       // from near space the rocket comes home through a re-entry instead
-      if (G.descendT > 2.5 && r.turbo <= 0 && r.bounces <= 0 && Hh > ZH.meso) { startReentry(); return; }
+      // a fall from near space always comes home through the re-entry, even with a turbo or bounce left
+      if (G.descendT > 2.5 && Hh > ZH.meso) { startReentry(); return; }
       if (G.descendT > 6 && r.turbo <= 0 && r.bounces <= 0 && Hh > ZH.wolken) { endFlight('skip'); return; }
     } else G.descendT = 0;
     if (run.time > 600) endFlight('skip');
@@ -306,7 +309,11 @@
   function updateReentry(dt) {
     const r = G.rocket, R = G.reentry;
     R.t += dt;
-    if (R.t >= RE_RETURN + RE_ENTRY) { endFlight('skip'); return; }
+    if (R.t >= RE_RETURN + RE_ENTRY) {
+      // with a turbo or a bounce left the fall goes on under physics, otherwise the flight is over
+      if (r.turbo > 0 || r.bounces > 0) { G.reentry = null; G.descendT = 0; r.vx = 150; r.vy = -260; r.a = Math.atan2(r.vy, r.vx); return; }
+      endFlight('skip'); return;
+    }
     const H = reentryHeight(R.t), vy = (reentryHeight(R.t + 0.04) - H) / 0.04;
     r.px = r.x; r.py = r.y;
     r.y = H; r.vy = vy;
@@ -322,8 +329,9 @@
     R.A = A;
     R.v = R.t < RE_RETURN ? lerp(11200, 7800, R.t / RE_RETURN) : lerp(320, 7800, smooth(14e3, 78e3, A));
     const rho = Math.exp(-A / 7200);
-    R.heat = clamp(Math.sqrt(rho) * Math.pow(R.v, 3) / 3.7e9, 0, 1.2);
-    if (!R.told && R.heat > 0.12) {
+    // shown heat: the physical value, widened so the glow builds up early and lasts through the dive
+    R.heat = smooth(0.02, 0.4, Math.sqrt(rho) * Math.pow(R.v, 3) / 3.7e9);
+    if (!R.told && R.heat > 0.25) {
       R.told = true;
       showBanner('Wiedereintritt', 'Plasma!', 'Die Luft vor der Rakete wird über 1.500 °C heiß und leuchtet.');
     }
@@ -805,12 +813,12 @@
     const mach = st === 'flight' && !G.reentry ? displaySpeed(Math.hypot(r.vx, r.vy), Hh) / 343 : 0;
     rocketMesh.userData.setVapor(Math.exp(-Math.pow((mach - 1.0) / 0.1, 2)) * smooth(0.2, 0.6, rhoR) * 0.95, G.t);
     const heat = G.reentry && st === 'flight' ? G.reentry.heat : 0;
-    rocketMesh.userData.setPlasma(Math.min(1, heat * 1.1), G.t);
+    rocketMesh.userData.setPlasma(heat, G.t);
     if (heat > 0.05 && dt > 0) {
       // sparks and ablating flecks stream off the glowing nose
       const L = rocketMesh.userData.length, ca = Math.cos(r.a), sa = Math.sin(r.a);
       const nx = r.x * S + ca * L * 0.45, ny = r.y * S + sa * L * 0.45, vx = r.vx * S, vy = r.vy * S;
-      for (let i = 0, n = Math.round(heat * 5); i < n; i++) {
+      for (let i = 0, n = Math.round(heat * 7); i < n; i++) {
         const back = rand(20, 60);
         World.fx.add({ x: nx + rand(-0.5, 0.5), y: ny + rand(-0.5, 0.5), z: rand(-1, 1), vx: vx * 0.7 - ca * back + rand(-4, 4), vy: vy * 0.7 - sa * back + rand(-4, 4), vz: rand(-5, 5), life: rand(0.25, 0.7), size: rand(0.6, 1.6), drag: 2, c: [1, 0.85, 0.55], c2: [1, 0.3, 0.45] });
       }
@@ -951,7 +959,7 @@
     const tHide = stats.turbo <= 0;
     if (G.hudCache.tHide !== tHide) { G.hudCache.tHide = tHide; $('btnTurbo').hidden = tHide; }
     if (G.hudCache.armor !== r.armor) { G.hudCache.armor = r.armor; $('hArmor').innerHTML = '<i class="pip"></i>'.repeat(Math.max(0, r.armor)); }
-    const showSkip = G.state === 'flight' && r.fuel <= 0 && r.turboT <= 0 && r.turbo <= 0 && r.vy < 0 && Hh > 600;
+    const showSkip = G.state === 'flight' && (!!G.reentry || (r.fuel <= 0 && r.turboT <= 0 && r.turbo <= 0 && r.vy < 0 && Hh > 600));
     if (showSkip !== G.skipShown) { G.skipShown = showSkip; $('btnSkip').hidden = !showSkip; }
     // during the re-entry the button moves out of the middle, where the camera frames the rocket
     const re = !!G.reentry;
