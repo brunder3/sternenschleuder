@@ -39,14 +39,14 @@
     lastZone: 0, descendT: 0, skipShown: false, hudCache: {}, tipT: 0, slowmo: 0, roll: 0, crashed: false, splash: false,
   };
   const RR = 18;                         // rocket hit radius (u)
-  const CATAPULT_Y = World.heightAt(0, 0);
-  const ANCHOR = 15;                     // band height above the platform (three units)
-  let catapult, rocketMesh = null, rocketMeshId = '';
+  const PAD_Y = World.heightAt(0, 0);
+  let pad, rocketMesh = null, rocketMeshId = '';
 
   // ================= launch site =================
-  catapult = Models.catapult();
-  catapult.position.set(0, CATAPULT_Y, 0);
-  scene.add(catapult);
+  pad = Models.launchPad();
+  pad.position.set(0, PAD_Y, 0);
+  scene.add(pad);
+  const PIVOT = pad.userData.pivot;      // height of the launch rail's hinge above the pad (three units)
   function setRocketMesh(id) {
     if (rocketMeshId === id && rocketMesh) return;
     if (rocketMesh) { scene.remove(rocketMesh); rocketMesh.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
@@ -55,12 +55,11 @@
     rocketMeshId = id;
     scene.add(rocketMesh);
   }
-  // rocket resting on the band: tail at the pouch, pulled back along the aim
+  // rocket clamped to the launch rail: tail just past the hinge, nose along the launch angle
   function padPose() {
-    const pull = G.state === 'charge' ? 1.5 + 6.5 * G.meter : 1.5;
     const a = G.angle, L = rocketMesh ? rocketMesh.userData.length : 7;
-    const tx = -Math.cos(a) * pull, ty = ANCHOR - Math.sin(a) * pull;
-    return { tx, ty, cx: tx + Math.cos(a) * L / 2, cy: CATAPULT_Y + ty + Math.sin(a) * L / 2, a };
+    const tx = Math.cos(a) * 0.8, ty = PIVOT + Math.sin(a) * 0.8;
+    return { tx, ty, cx: tx + Math.cos(a) * L / 2, cy: PAD_Y + ty + Math.sin(a) * L / 2, a };
   }
 
   // ================= input =================
@@ -210,7 +209,7 @@
     G.spawnLast = { x: r.x, y: r.y };
     G.acc = { coin: 0, fuel: 1200, ring: 800, obst: 0, friend: 0, amb: 0 };
     populateInitial();
-    Sfx.catapult();
+    Sfx.ignite();
     G.shake = 5 + 6 * p;
     if (perfect) {
       G.run.perfect = true; G.run.coinBonus = 1.1; G.slowmo = 0.45;
@@ -218,7 +217,10 @@
       const pop = document.createElement('div'); pop.className = 'perfect-pop'; pop.textContent = 'Perfekt!';
       document.body.appendChild(pop); setTimeout(() => pop.remove(), 1200);
     }
-    for (let i = 0; i < 18; i++) World.fx.norm({ x: pose.tx, y: CATAPULT_Y + pose.ty, z: rand(-2, 2), vx: rand(-8, 4), vy: rand(-2, 6), vz: rand(-8, 8), life: rand(0.5, 1.1), size: rand(1.5, 3), grow: 2, drag: 2, c: [0.85, 0.8, 0.7], a: 0.55 });
+    // ignition: exhaust floods the flame trench and billows out over the pad
+    for (let i = 0; i < 70; i++) { const side = Math.random() < 0.5 ? -1 : 1; World.fx.norm({ x: 1.5 + rand(-3, 4), y: PAD_Y + 2.2, z: side * rand(0, 3), vx: rand(-6, 10), vy: rand(1, 6), vz: side * rand(6, 20), life: rand(1.6, 3.2), size: rand(3, 6), grow: 2.2, drag: 1.1, c: [0.9, 0.9, 0.92], a: 0.65 }); }
+    for (let i = 0; i < 30; i++) World.fx.add({ x: 1.5 + rand(-2, 2), y: PAD_Y + 2, z: rand(-2, 2), vx: rand(-8, 8), vy: rand(0, 6), vz: rand(-10, 10), life: rand(0.3, 0.7), size: rand(1.5, 3), drag: 2, c: [1, 0.85, 0.45], c2: [1, 0.45, 0.15] });
+    for (let i = 0; i < 18; i++) World.fx.norm({ x: pose.tx, y: PAD_Y + pose.ty, z: rand(-2, 2), vx: rand(-8, 4), vy: rand(-2, 6), vz: rand(-8, 8), life: rand(0.5, 1.1), size: rand(1.5, 3), grow: 2, drag: 2, c: [0.85, 0.8, 0.7], a: 0.55 });
     showScreen('flight');
   }
   function fireTurbo() {
@@ -246,7 +248,7 @@
     const sp = Math.hypot(r.vx, r.vy);
     const Hh = Math.max(0, r.y);
     const A = altitudeAt(Hh);
-    const vDisp = sp * speedScaleAt(Hh);
+    const vDisp = displaySpeed(sp, Hh);
     if (Hh > run.maxH) { run.maxH = Hh; run.maxA = A; }
     if (vDisp > run.maxV) run.maxV = vDisp;
     if (!run.machDone && vDisp >= 343 && A < 60000 && airDensity(Hh) > 0.02) {
@@ -422,6 +424,13 @@
     jupiter: { obst: ['comet', 'asteroid'], every: 720, friend: ['ufo'], fEvery: 4600, amb: ['comet', 'asteroid'] },
     saturn:  { obst: ['ice', 'ice', 'comet'], every: 650, friend: ['ufo'], fEvery: 5000, amb: ['ice', 'comet'] },
     edge:    { obst: ['plasma'], every: 600, friend: [], fEvery: 0, amb: ['plasma'] },
+    oort:    { obst: ['ice', 'comet', 'ice'], every: 560, friend: ['ufo'], fEvery: 5200, amb: ['comet', 'ice'] },
+    proxima: { obst: ['plasma', 'asteroid'], every: 540, friend: ['ufo'], fEvery: 4800, amb: ['plasma', 'asteroid'] },
+    wega:    { obst: ['plasma', 'comet'], every: 520, friend: ['ufo'], fEvery: 5000, amb: ['comet', 'plasma'] },
+    plejaden: { obst: ['plasma', 'ice', 'plasma'], every: 500, friend: ['ufo'], fEvery: 4600, amb: ['ice', 'plasma'] },
+    orionnebel: { obst: ['plasma', 'rock', 'plasma'], every: 480, friend: ['ufo'], fEvery: 4400, amb: ['plasma', 'rock'] },
+    zentrum: { obst: ['plasma', 'asteroid', 'comet'], every: 460, friend: ['ufo'], fEvery: 4200, amb: ['plasma', 'comet'] },
+    andromeda: { obst: ['plasma', 'comet'], every: 440, friend: ['ufo'], fEvery: 4000, amb: ['plasma', 'comet'] },
   };
   const OBST_R = { bird: 16, drone: 24, zeppelin: 60, ice: 22, meteor: 24, satellite: 34, bigsat: 44, debris: 15, asteroid: 30, rock: 16, comet: 26, plasma: 24 };
   const OBST_SCALE = { bird: 1, drone: 1, zeppelin: 1, ice: 2.2, meteor: 2.3, satellite: 1, bigsat: 1.1, debris: 1, asteroid: 3, rock: 1.6, comet: 2.4, plasma: 1.2 };
@@ -536,7 +545,7 @@
     let guard = 0;
     const coinEvery = 230 + sp * 0.13;
     while (A.coin > coinEvery && guard++ < 6) { A.coin -= coinEvery * rand(0.6, 1.4); spawnCoins(aheadPoint(r, dir, sp), k); }
-    const fuelEvery = (3400 + sp * 0.9) / stats.canRate;
+    const fuelEvery = (3400 + sp * 0.9) / (stats.canRate * fuelScarcity(r.y));
     if (A.fuel > fuelEvery) { A.fuel -= fuelEvery * rand(0.7, 1.3); spawnFuel(aheadPoint(r, dir, sp), k); }
     const ringEvery = 2200 + sp * 0.7;
     if (A.ring > ringEvery) { A.ring -= ringEvery * rand(0.7, 1.3); spawnRing(aheadPoint(r, dir, sp), dir, k); }
@@ -617,7 +626,7 @@
     o.used = true; o.t = 0;
     const sp = Math.max(1, Math.hypot(r.vx, r.vy)), add = sp * 0.16 + 260;
     r.vx += r.vx / sp * add; r.vy += r.vy / sp * add;
-    r.fuel = Math.min(r.fuelMax, r.fuel + r.fuelMax * 0.06);
+    r.fuel = Math.min(r.fuelMax, r.fuel + r.fuelMax * 0.06 * fuelScarcity(r.y));
     G.run.rings++;
     G.flash = 0.25; G.flashRgb = [90, 230, 255];
     Sfx.ring(); addText(o.x, o.y, 'Boost!', '#9ff3ff', true);
@@ -729,13 +738,15 @@
       rocketMesh.visible = true;
       rocketMesh.position.set(p.cx, p.cy, 0);
       rocketMesh.rotation.z = p.a; rocketMesh.rotation.x = 0;
-      rocketMesh.userData.setThrust(0, G.t);
-      catapult.userData.setPouch(p.tx, p.ty, p.a);
+      // on the pad the engines idle and vent; while the ignition meter runs they build up
+      const charging = st === 'charge';
+      rocketMesh.userData.setThrust(charging ? 0.12 + 0.3 * G.meter : 0, G.t);
+      pad.userData.setRail(p.a, 0);
+      if (Math.random() < (charging ? 0.5 + G.meter : 0.15)) World.fx.norm({ x: 1.5 + rand(-2, 2), y: PAD_Y + 2, z: rand(-2, 2), vx: rand(-1, 3), vy: rand(1, 3) * (charging ? 1 + G.meter : 0.6), vz: rand(-3, 3), life: rand(1, 2), size: rand(1.5, 3), grow: 2, drag: 1, c: [0.95, 0.95, 0.97], a: 0.35 + (charging ? 0.3 * G.meter : 0), fadeIn: true });
       return;
     }
-    // band snaps back after the launch
-    const wob = Math.max(0, 1 - (G.run ? G.run.time : 9) * 1.4);
-    catapult.userData.setPouch(Math.sin(G.t * 38) * 1.2 * wob, ANCHOR + 0.5, 0);
+    // the clamp arms swing away after ignition
+    pad.userData.setRail(G.angle, Math.min(1, (G.run ? G.run.time : 9) * 2.5));
     const r = G.rocket;
     if (!r) return;
     rocketMesh.visible = !G.crashed;
@@ -771,12 +782,12 @@
       const a = G.t * 0.06;
       const portrait = W < H;
       const short = !portrait && H < 520;   // landscape phone: the cards cover the lower half, so aim lower
-      _cp.set(-44 + Math.sin(a) * 6, (portrait ? 40 : 24) + CATAPULT_Y, (portrait ? 58 : 44) + Math.cos(a) * 6);
-      _cl.set(3, (portrait ? -6 : short ? -4 : 10) + CATAPULT_Y, 0);
+      _cp.set(-44 + Math.sin(a) * 6, (portrait ? 40 : 24) + PAD_Y, (portrait ? 58 : 44) + Math.cos(a) * 6);
+      _cl.set(3, (portrait ? -6 : short ? -4 : 9) + PAD_Y, 0);
       fov = portrait ? 66 : 52;
     } else if (st === 'charge') {
-      _cp.set(-30, 6 + CATAPULT_Y, 20);
-      _cl.set(6, 13 + CATAPULT_Y, 0);
+      _cp.set(-17, 7 + PAD_Y, 19);
+      _cl.set(6, 8 + PAD_Y, 0);
       fov = W < H ? 72 : 55;
     } else if (G.rocket) {
       // chase camera behind the rocket: looks down at the land in level flight and tilts up on steep climbs,
@@ -824,12 +835,15 @@
     setText('pPct', deNum(p * 100, 1) + ' %');
     const pw = (p * 100).toFixed(1);
     if (G.hudCache.pw !== pw) { G.hudCache.pw = pw; $('pFill').style.width = `calc(${pw}% - 4px)`; $('pMark').style.left = pw + '%'; }
-    const vms = Math.hypot(r.vx, r.vy) * speedScaleAt(Hh);
+    const vms = displaySpeed(Math.hypot(r.vx, r.vy), Hh);
     const kmh = vms * 3.6;
-    if (vms < 2800) { setText('hSpd', deNum(kmh)); setText('hSpdU', 'km/h'); }
-    else { setText('hSpd', deNum(vms / 1000, vms < 100000 ? 1 : 0)); setText('hSpdU', 'km/s'); }
+    const [sv, su] = fmtSpeedParts(vms);
+    setText('hSpd', sv); setText('hSpdU', su);
     setText('hMach', altitudeAt(Hh) < 80000 && vms > 170 ? 'Mach ' + deNum(vms / 343, 1) : '');
-    const needle = clamp(Math.log10(1 + kmh) / 6.1, 0, 1);
+    // in space the distances grow far faster than any rocket flies: say so
+    const lapse = Hh >= ZH.space ? timeLapseAt(Hh) : 1;
+    setText('hLapse', lapse >= 10 ? 'Zeitraffer ' + fmtLapse(lapse) : '');
+    const needle = clamp(Math.log10(1 + kmh) / 9.05, 0, 1);
     const ang = (-135 + 270 * needle).toFixed(1);
     if (G.hudCache.ang !== ang) { G.hudCache.ang = ang; $('gNeedle').setAttribute('transform', `rotate(${ang} 75 75)`); }
     setText('hCoins', fmtNum(run.coins));
@@ -957,7 +971,7 @@
   function upgradeStat(id, st) {
     const scale = ZONES[1].A / ZONES[1].H;
     switch (id) {
-      case 'sling': return ['Abschuss', deNum(st.sling * scale * 3.6) + ' km/h'];
+      case 'sling': return ['Starttempo', deNum(st.sling * scale * 3.6) + ' km/h'];
       case 'engine': return ['Schub', deNum(st.thrust / PHYS.G0, 2) + ' g'];
       case 'tank': return ['Brenndauer', deNum(st.fuel / st.burn, 1) + ' s'];
       case 'aero': return ['Luftwiderstand', deNum(st.drag / PHYS.DRAG * 100) + ' %'];
@@ -975,7 +989,7 @@
     return ['', ''];
   }
   const QUICK = [
-    { id: 'sling', title: 'Katapult', sub: 'Abschusskraft', c1: '#2bb673', c2: '#1b7f55' },
+    { id: 'sling', title: 'Startrampe', sub: 'Startbooster', c1: '#2bb673', c2: '#1b7f55' },
     { id: 'tank', title: 'Tank', sub: 'Brenndauer', c1: '#4f7dff', c2: '#2c4fc4' },
     { id: 'engine', title: 'Booster', sub: 'Schub', c1: '#ff8a3d', c2: '#d4501c' },
     { id: 'value', title: 'Einkommen', sub: 'Münzwert', c1: '#e4b520', c2: '#b07d0a' },
@@ -994,7 +1008,7 @@
   function updateBadges() { const n = claimableCount(); for (const id of ['mBadge', 'mBadge2']) { const b = $(id); b.hidden = n === 0; b.textContent = n; } }
   function nextGoal() {
     const z = save.bestZone;
-    if (z >= ZONES.length - 1) return save.won ? 'Alles entdeckt. Jag deine Rekorde!' : 'Ziel: Heliopause';
+    if (z >= ZONES.length - 1) return save.won ? 'Alles entdeckt. Jag deine Rekorde!' : 'Ziel: Andromeda';
     const nz = ZONES[z + 1];
     return 'Nächstes Ziel: ' + nz.name + ' · ' + fmtAlt(nz.A);
   }
@@ -1026,7 +1040,7 @@
   });
 
   // ---------- results ----------
-  function reasonText(r) { return { land: 'Gelandet', crash: 'Bruchlandung', splash: 'Platsch! Wasserlandung', skip: 'Zurück zur Erde', abort: 'Flug beendet', win: 'Heliopause erreicht!' }[r] || 'Flug beendet'; }
+  function reasonText(r) { return { land: 'Gelandet', crash: 'Bruchlandung', splash: 'Platsch! Wasserlandung', skip: 'Zurück zur Erde', abort: 'Flug beendet', win: 'Andromeda erreicht!' }[r] || 'Flug beendet'; }
   function bestTip() {
     const nr = ROCKETS.find(R => !save.rockets.includes(R.id));
     if (nr && nr.req <= save.bestZone && nr.cost <= save.coins) return `Du kannst dir die Rakete <b>${nr.name}</b> leisten. Schau im Hangar unter Raketen vorbei.`;
@@ -1039,7 +1053,7 @@
     const claim = claimableCount();
     if (claim) return `Du hast <b>${claim}</b> erfüllte Mission${claim > 1 ? 'en' : ''}. Hol dir die Belohnung im Hangar ab.`;
     if (nr && nr.req > save.bestZone) return `Erreiche <b>${ZONES[nr.req].name}</b>, um die Rakete ${nr.name} freizuschalten.`;
-    return pick(['Triff beim Abschuss das Feld „Perfekt“: Das gibt mehr Tempo und 10 % mehr Münzen.', 'Boost-Ringe geben Tempo und ein bisschen Treibstoff zurück.', 'Ballons platzen lassen gibt Auftrieb und Münzen.', 'Zünde den Turbo, während du Schub gibst: Er schiebt zusätzlich und kostet keinen Treibstoff.']);
+    return pick(['Zünde, wenn der Balken im Feld „Perfekt“ steht: Das gibt mehr Tempo und 10 % mehr Münzen.', 'Boost-Ringe geben Tempo und ein bisschen Treibstoff zurück.', 'Ballons platzen lassen gibt Auftrieb und Münzen.', 'Zünde den Turbo, während du Schub gibst: Er schiebt zusätzlich und kostet keinen Treibstoff.']);
   }
   function showResults(d) {
     const { run, reason } = d;
@@ -1057,9 +1071,9 @@
       <div class="ledger">
         <div><span>Gesammelt (${fmtNum(run.coinCount)} Münzen${run.gems ? ', ' + run.gems + ' Edelst.' : ''})</span><span>${fmtNum(d.collected)}</span></div>
         <div><span>Höhenbonus</span><span>${fmtNum(d.heightBonus)}</span></div>
-        ${run.perfect ? '<div><span>Perfekter Abschuss</span><span>+10 %</span></div>' : ''}
+        ${run.perfect ? '<div><span>Perfekte Zündung</span><span>+10 %</span></div>' : ''}
         ${d.recordBonus ? `<div><span>Rekordbonus</span><span>${fmtNum(d.recordBonus)}</span></div>` : ''}
-        ${d.winBonus ? `<div><span>Heliopause-Prämie</span><span>${fmtNum(d.winBonus)}</span></div>` : ''}
+        ${d.winBonus ? `<div><span>Andromeda-Prämie</span><span>${fmtNum(d.winBonus)}</span></div>` : ''}
         <div class="total"><span>Gesamt</span><span><i class="coin-ico"></i>${fmtNum(d.total)}</span></div>
       </div>
       <div class="mini">
@@ -1314,8 +1328,8 @@
     }
     updateRocketVisual(active ? sdt : 0);
     updateCamera(dt);
-    catapult.userData.lamp.emissiveIntensity = Math.sin(G.t * 4) > 0.2 ? 2.4 : 0.2;
-    if (catapult.userData.sock) catapult.userData.sock.rotation.y = Math.sin(G.t * 1.7) * 0.25;
+    pad.userData.lamp.emissiveIntensity = Math.sin(G.t * 4) > 0.2 ? 2.4 : 0.2;
+    if (pad.userData.sock) pad.userData.sock.rotation.y = Math.sin(G.t * 1.7) * 0.25;
     World.update(active ? dt : 0, G.t, Math.max(0, camera.position.y / S));
     World.render();
     drawFx();
