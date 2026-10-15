@@ -331,8 +331,7 @@
   }
 
   // ================= objects =================
-  const coinGeo = new T.CylinderGeometry(1, 1, 0.24, 28).rotateZ(Math.PI / 2);
-  Models.shared();
+  const coinGeo = Models.shared().coinGeo;
   class InstPool {
     constructor(geo, mat, max) {
       this.max = max; this.items = [];

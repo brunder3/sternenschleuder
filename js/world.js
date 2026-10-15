@@ -16,6 +16,7 @@ const World = (() => {
   // sun high on the right and slightly behind the camera, so terrain and planets are lit from the viewer's side
   const sunDir = new T.Vector3(-0.3, 0.68, 0.66).normalize();
   let lowPower = false;
+  let photoSky = null;
   let composer = null, bloom = null, pmrem = null, envRT = null, envHu = -1, envTime = -99;
 
   // ---------- noise ----------
@@ -98,6 +99,48 @@ const World = (() => {
     return _c;
   }
 
+  // With photo textures: how much grass, rock, sand, soil and snow each vertex shows, plus a colour tint
+  // for forests, meadows and dry fields. Same rules as faceColor().
+  const SPL = [0, 0, 0, 0], _t = new T.Color(), TINT = { forest: new T.Color(0.55, 0.72, 0.52), lush: new T.Color(1.08, 1.06, 0.9), dry: new T.Color(1.15, 1.0, 0.75) };
+  function surfaceMix(h, ny, x, z) {
+    const b = biomeAt(x, z);
+    let g = 1, r = 0, sa = 0, so = 0;
+    const mixIn = (w, k) => { g *= 1 - w; r *= 1 - w; sa *= 1 - w; so *= 1 - w; if (k === 0) g += w; else if (k === 1) r += w; else if (k === 2) sa += w; else so += w; };
+    mixIn(1 - smooth(0.28, 0.35, b), 3);                                    // fields and dry ground
+    mixIn(1 - smooth(0.5, 1.5, h), 2);                                      // beaches
+    mixIn(1 - smooth(-0.6, 0.6, h), 3);                                     // river beds
+    mixIn(Math.max(1 - smooth(0.62, 0.8, ny), smooth(48, 70, h)), 1);       // cliffs and high ground
+    const snow = smooth(82, 98, h) * smooth(0.5, 0.7, ny);
+    SPL[0] = g * (1 - snow); SPL[1] = r * (1 - snow); SPL[2] = sa * (1 - snow); SPL[3] = so * (1 - snow);
+    _t.setRGB(1, 1, 1).lerp(TINT.lush, smooth(0.4, 0.55, b)).lerp(TINT.forest, smooth(0.58, 0.68, b)).lerp(TINT.dry, (1 - smooth(0.26, 0.34, b)) * 0.6);
+    _t.multiplyScalar(1 + (fbm(x * 0.05, z * 0.05, 2) - 0.5) * 0.22);
+    return _t;
+  }
+  // terrain material: photo textures sampled in world space at two scales, blended by the splat weights
+  function photoTerrainMaterial() {
+    const P = Models.TEX.photo;
+    const mat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0, envMapIntensity: 0.35 });
+    mat.onBeforeCompile = sh => {
+      Object.assign(sh.uniforms, { tGrass: { value: P.grass }, tRock: { value: P.rock }, tSand: { value: P.sand }, tSoil: { value: P.soil } });
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec4 splat;\nvarying vec4 vSplat;\nvarying vec3 vWPos;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSplat = splat;\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform sampler2D tGrass, tRock, tSand, tSoil;\nvarying vec4 vSplat;\nvarying vec3 vWPos;')
+        .replace('#include <map_fragment>', [
+          'float camD = length(vWPos - cameraPosition), farK = 0.3 + 0.5 * smoothstep(40.0, 420.0, camD);',
+          'vec2 q1 = vWPos.xz / 7.0, q2 = vWPos.xz / 63.0 + 0.37;',
+          'vec3 cG = mix(texture2D(tGrass, q1).rgb, texture2D(tGrass, q2).rgb, farK);',
+          'vec3 cR = mix(texture2D(tRock, q1 * 0.6).rgb, texture2D(tRock, q2).rgb, farK);',
+          'vec3 cS = mix(texture2D(tSand, q1).rgb, texture2D(tSand, q2).rgb, farK);',
+          'vec3 cD = mix(texture2D(tSoil, q1).rgb, texture2D(tSoil, q2).rgb, farK);',
+          'float snowW = clamp(1.0 - dot(vSplat, vec4(1.0)), 0.0, 1.0);',
+          'diffuseColor.rgb *= cG * vSplat.x + cR * vSplat.y + cS * vSplat.z + cD * vSplat.w + vec3(0.85, 0.87, 0.9) * snowW;',
+        ].join('\n'));
+    };
+    return mat;
+  }
+
   // ---------- terrain chunks ----------
   // Smooth-shaded height field. Normals come from the shared height grid, so neighbouring chunks meet
   // without seams; the triangle split per cell matches surfaceAt().
@@ -107,13 +150,15 @@ const World = (() => {
   function buildChunk(cx, cz) {
     const n = SEG + 1, x0 = cx * CHUNK, z0 = cz * CHUNK, i0 = cx * SEG, j0 = cz * SEG;
     const pos = new Float32Array(n * n * 3), nor = new Float32Array(n * n * 3), col = new Float32Array(n * n * 3), uv = new Float32Array(n * n * 2);
+    const photo = !!Models.TEX.photo, spl = photo ? new Float32Array(n * n * 4) : null;
     for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
       const k = j * n + i, gi = i0 + i, gj = j0 + j, x = x0 + i * GRID, z = z0 + j * GRID, h = gridH(gi, gj);
       const nx = gridH(gi - 1, gj) - gridH(gi + 1, gj), nz = gridH(gi, gj - 1) - gridH(gi, gj + 1), ny = 2 * GRID;
       const len = Math.hypot(nx, ny, nz);
       pos[k * 3] = x; pos[k * 3 + 1] = h; pos[k * 3 + 2] = z;
       nor[k * 3] = nx / len; nor[k * 3 + 1] = ny / len; nor[k * 3 + 2] = nz / len;
-      const c3 = faceColor(h, ny / len, x, z);
+      const c3 = photo ? surfaceMix(h, ny / len, x, z) : faceColor(h, ny / len, x, z);
+      if (photo) spl.set(SPL, k * 4);
       col[k * 3] = c3.r; col[k * 3 + 1] = c3.g; col[k * 3 + 2] = c3.b;
       uv[k * 2] = x / 48; uv[k * 2 + 1] = z / 48;
     }
@@ -130,6 +175,7 @@ const World = (() => {
     geo.setAttribute('normal', new T.BufferAttribute(nor, 3));
     geo.setAttribute('color', new T.BufferAttribute(col, 3));
     geo.setAttribute('uv', new T.BufferAttribute(uv, 2));
+    if (photo) geo.setAttribute('splat', new T.BufferAttribute(spl, 4));
     geo.setIndex(new T.BufferAttribute(idx, 1));
     geo.computeBoundingSphere();
     const m = new T.Mesh(geo, terrainMat);
@@ -391,6 +437,17 @@ const World = (() => {
     });
     const sky = new T.Mesh(new T.SphereGeometry(5000, 32, 16), skyMat);
     sky.renderOrder = -10; bgScene.add(sky);
+    // photographed sky with real clouds near the ground; it fades into the drawn sky on the way up
+    if (Models.TEX.skyCube) {
+      photoSky = new T.Mesh(new T.BoxGeometry(4600, 4600, 4600), new T.ShaderMaterial({
+        uniforms: { cube: { value: Models.TEX.skyCube }, fade: { value: 1 }, gain: { value: 1.25 } },
+        vertexShader: 'varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'uniform samplerCube cube; uniform float fade; uniform float gain; varying vec3 vDir;\n' +
+          'void main(){ vec3 c = textureCube(cube, vec3(-vDir.x, vDir.y, vDir.z)).rgb * gain; gl_FragColor = vec4(c, fade);\n#include <colorspace_fragment>\n}',
+        side: T.BackSide, transparent: true, depthWrite: false, depthTest: false,
+      }));
+      photoSky.rotation.y = 2.2; photoSky.renderOrder = -9.5; bgScene.add(photoSky);
+    }
     // stars, galaxy, sun and aurora: additive, but kept in the opaque pass (renderOrder decides their
     // order) so the planets and the Earth, which are opaque and drawn after them, cover them
     const n = 2600, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), r = Models.mulberry(7);
@@ -406,7 +463,13 @@ const World = (() => {
     stars = new T.Points(sg, new T.PointsMaterial({ size: 1.8, sizeAttenuation: false, vertexColors: true, transparent: false, blending: T.AdditiveBlending, opacity: 0, depthWrite: false, depthTest: false }));
     stars.renderOrder = -9; bgScene.add(stars);
     galaxy = new T.Mesh(new T.PlaneGeometry(9000, 4500), new T.MeshBasicMaterial({ map: Models.TEX.galaxy, transparent: false, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, depthTest: false }));
-    galaxy.position.set(1500, 2300, -2600); galaxy.lookAt(0, 0, 0); galaxy.rotateZ(-0.5); galaxy.renderOrder = -8; bgScene.add(galaxy);
+    galaxy.position.set(1500, 2300, -2600); galaxy.lookAt(0, 0, 0); galaxy.rotateZ(-0.5); galaxy.renderOrder = -8;
+    if (Models.TEX.photo) {
+      // a real panorama of the Milky Way wrapped around the sky, tilted like the galactic plane
+      galaxy = new T.Mesh(new T.CylinderGeometry(4200, 4200, 2100, 64, 1, true), new T.MeshBasicMaterial({ map: Models.TEX.photo.milkyway, side: T.BackSide, transparent: false, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, depthTest: false }));
+      galaxy.rotation.set(1.05, 0.4, 0.3); galaxy.renderOrder = -8;
+    }
+    bgScene.add(galaxy);
     spiral = new T.Sprite(new T.SpriteMaterial({ map: Models.TEX.spiral, transparent: false, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, depthTest: false }));
     spiral.position.set(3200, 700, 1400); spiral.scale.set(1500, 1500, 1); spiral.renderOrder = -8; bgScene.add(spiral);
     sunSprite = new T.Sprite(new T.SpriteMaterial({ map: Models.TEX.glow, color: 0xfff1c8, transparent: false, blending: T.AdditiveBlending, depthWrite: false, depthTest: false }));
@@ -503,7 +566,7 @@ const World = (() => {
     sunLight.shadow.bias = -0.0006;
     scene.add(sunLight); scene.add(sunLight.target);
     Models.buildTextures();
-    terrainMat = new T.MeshStandardMaterial({ vertexColors: true, map: Models.TEX.ground, roughness: 0.95, metalness: 0, envMapIntensity: 0.4 });
+    terrainMat = Models.TEX.photo ? photoTerrainMaterial() : new T.MeshStandardMaterial({ vertexColors: true, map: Models.TEX.ground, roughness: 0.95, metalness: 0, envMapIntensity: 0.4 });
     Models.TEX.waterNormal.repeat.set(220, 220);
     water = new T.Mesh(new T.PlaneGeometry(14000, 14000), new T.MeshPhysicalMaterial({ color: 0x15405c, roughness: 0.08, metalness: 0, transparent: true, opacity: 0.93,
       normalMap: Models.TEX.waterNormal, normalScale: new T.Vector2(0.35, 0.35), envMapIntensity: 0.85, clearcoat: 0.4, clearcoatRoughness: 0.05 }));
@@ -546,7 +609,7 @@ const World = (() => {
   }
 
   // ---------- per-frame ----------
-  const _sky = [new T.Color(), new T.Color(), new T.Color()];
+  const _sky = [new T.Color(), new T.Color(), new T.Color()], _fogPhoto = new T.Color('#a3b6c4');
   let skyStops = null;
   function skyAt(Hu) {
     if (!skyStops) skyStops = SKY_STOPS.map(s => ({ H: s.H, c: s.c.map(x => new T.Color(x)) }));
@@ -597,6 +660,11 @@ const World = (() => {
     updateEnv(Hu, t);
     // fog: the haze thins out with altitude; terrain disappears once we are in space
     scene.fog.color.copy(sky[2]);
+    if (photoSky) {
+      const f = 1 - smooth(ZH.jet, zoneFrac('strato', 0.5), Hu);
+      photoSky.material.uniforms.fade.value = f; photoSky.visible = f > 0.002;
+      scene.fog.color.lerp(_fogPhoto, f);
+    }
     // fog ends before the edge of the loaded terrain ring (2700 units to the side and behind)
     scene.fog.near = Math.min(420 + cy * 2.5, 1700);
     scene.fog.far = Math.min(2550 + cy * 1.2, 3000);
@@ -614,7 +682,7 @@ const World = (() => {
     sunLight.intensity = lerp(3.2, 3.4, space);
     // stars, galaxy, sun
     stars.material.opacity = smooth(zoneFrac('strato', 0.6), zoneFrac('space', 0.3), Hu);
-    galaxy.material.opacity = smooth(ZH.space, zoneFrac('orbit', 0.5), Hu) * (composer ? 0.32 : 0.5);
+    galaxy.material.opacity = smooth(ZH.space, zoneFrac('orbit', 0.5), Hu) * (Models.TEX.photo ? 1 : composer ? 0.32 : 0.5);
     // Andromeda: a faint smudge from the galactic centre on, filling the view on arrival
     const andro = smooth(ZH.zentrum, ZH.andromeda, Hu);
     spiral.material.opacity = smooth(zoneFrac('zentrum', 0.1), zoneFrac('zentrum', 0.5), Hu) * 0.95;

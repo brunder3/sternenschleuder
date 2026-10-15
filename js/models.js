@@ -299,6 +299,26 @@ const Models = (() => {
     g.globalCompositeOperation = 'source-over';
     return c;
   }
+  function coinNormalCanvas() {
+    const S = 256, c = makeCanvas(S, S), g = c.getContext('2d');
+    g.fillStyle = '#000'; g.fillRect(0, 0, S, S);
+    g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+    g.lineWidth = 7; g.beginPath(); g.arc(S / 2, S / 2, S * 0.4, 0, TAU); g.stroke();
+    for (let i = 0; i < 24; i++) { const a = i / 24 * TAU; g.beginPath(); g.arc(S / 2 + Math.cos(a) * S * 0.345, S / 2 + Math.sin(a) * S * 0.345, 3.4, 0, TAU); g.fill(); }
+    g.beginPath();
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i / 10 * TAU, r = i % 2 ? S * 0.11 : S * 0.26; g.lineTo(S / 2 + Math.cos(a) * r, S / 2 + Math.sin(a) * r); }
+    g.closePath(); g.fill();
+    // soften, then turn the heights into normals
+    const blur = makeCanvas(S, S), bg = blur.getContext('2d'); bg.filter = 'blur(2.2px)'; bg.drawImage(c, 0, 0);
+    const src = bg.getImageData(0, 0, S, S).data, img = g.createImageData(S, S), d = img.data;
+    const h = (x, y) => src[(Math.min(S - 1, Math.max(0, y)) * S + Math.min(S - 1, Math.max(0, x))) * 4] / 255;
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const nx = (h(x - 1, y) - h(x + 1, y)) * 2.2, ny = (h(x, y + 1) - h(x, y - 1)) * 2.2, l = Math.hypot(nx, ny, 1), k = (y * S + x) * 4;
+      d[k] = (nx / l * 0.5 + 0.5) * 255; d[k + 1] = (ny / l * 0.5 + 0.5) * 255; d[k + 2] = (1 / l * 0.5 + 0.5) * 255; d[k + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
   function chevronCanvas() {
     const c = makeCanvas(128, 128), g = c.getContext('2d');
     g.strokeStyle = 'rgba(255,255,255,.95)'; g.lineWidth = 12; g.lineCap = 'round'; g.lineJoin = 'round';
@@ -323,6 +343,29 @@ const Models = (() => {
     TEX.nebula = canvasTex(nebulaCanvas());
     TEX.chevron = canvasTex(chevronCanvas());
     for (const p of ['moon', 'mars', 'jupiter', 'saturn', 'earth']) TEX[p] = canvasTex(planetCanvas(p));
+    TEX.coinNormal = canvasTex(coinNormalCanvas()); TEX.coinNormal.colorSpace = T.NoColorSpace;
+    loadPhotos();
+  }
+  // photo textures from js/photos.js (embedded data URLs); the drawn textures above stay as fallbacks
+  function loadPhotos() {
+    if (typeof PHOTOS === 'undefined') return;
+    const L = new T.TextureLoader();
+    const photo = (key, srgb = true, repeat = false) => {
+      const t = L.load(PHOTOS[key]);
+      t.colorSpace = srgb ? T.SRGBColorSpace : T.NoColorSpace;
+      if (repeat) { t.wrapS = t.wrapT = T.RepeatWrapping; }
+      t.anisotropy = 8;
+      return t;
+    };
+    TEX.photo = {
+      grass: photo('grass', true, true), rock: photo('rock', true, true), sand: photo('sand', true, true), soil: photo('soil', true, true),
+      milkyway: photo('milkyway'), earthClouds: photo('earthClouds', false), cloud: photo('cloud'),
+    };
+    TEX.earth = photo('earth'); TEX.moon = photo('moon');
+    TEX.waterNormal = photo('waterNormal', false, true);
+    TEX.clouds = [TEX.photo.cloud];
+    TEX.skyCube = new T.CubeTextureLoader().load(['sky_px', 'sky_nx', 'sky_py', 'sky_ny', 'sky_pz', 'sky_nz'].map(k => PHOTOS[k]));
+    TEX.skyCube.colorSpace = T.SRGBColorSpace;
   }
 
   // ---------- rocket ----------
@@ -609,13 +652,15 @@ const Models = (() => {
   const SHARED = {};
   function shared() {
     if (SHARED.ready) return SHARED;
-    SHARED.coinGeo = new T.CylinderGeometry(1, 1, 0.22, 28).rotateX(Math.PI / 2);
-    // coins glow a little so they read against sky and terrain without an environment map
-    SHARED.coinMats = [
-      new T.MeshStandardMaterial({ color: '#e0904a', roughness: 0.35, metalness: 0.15, emissive: '#b8561c', emissiveIntensity: 0.55 }),
-      new T.MeshStandardMaterial({ color: '#eef3fb', roughness: 0.3, metalness: 0.15, emissive: '#8c9ab4', emissiveIntensity: 0.6 }),
-      new T.MeshStandardMaterial({ color: '#ffd03a', roughness: 0.3, metalness: 0.15, emissive: '#e09a00', emissiveIntensity: 0.7 }),
-    ];
+    // a minted coin: recessed faces inside a raised rim; the faces carry an embossed star (normal map)
+    const prof = [[0, 0.075], [0.8, 0.075], [0.835, 0.12], [0.96, 0.13], [1, 0.1], [1, -0.1], [0.96, -0.13], [0.835, -0.12], [0.8, -0.075], [0, -0.075]];
+    const coin = new T.LatheGeometry(prof.map(([x, y]) => new T.Vector2(x, y)), 40);
+    const pos = coin.attributes.position, uv = coin.attributes.uv;
+    for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) * 0.5 + 0.5, pos.getZ(i) * 0.5 + 0.5);
+    SHARED.coinGeo = coin.rotateZ(Math.PI / 2);   // axis along x: the face looks at the chase camera
+    // polished metal reflects the sky; a faint glow keeps coins readable in shadow and in space
+    const metal = (color, glow, rough) => new T.MeshStandardMaterial({ color, metalness: 1, roughness: rough, normalMap: TEX.coinNormal, normalScale: new T.Vector2(1.1, 1.1), emissive: glow, emissiveIntensity: 0.32, envMapIntensity: 1.6 });
+    SHARED.coinMats = [metal('#d9864e', '#7a3a12', 0.32), metal('#e4e9f0', '#6a7690', 0.24), metal('#ffcb3d', '#a86a00', 0.26)];
     SHARED.gemGeo = new T.OctahedronGeometry(1.25, 0).scale(0.8, 1.25, 0.8);
     SHARED.ready = true;
     return SHARED;
@@ -790,6 +835,10 @@ const Models = (() => {
       const ring = new T.Mesh(rg, new T.MeshBasicMaterial({ map: TEX.ring, transparent: true, side: T.DoubleSide, depthWrite: false }));
       ring.rotation.x = Math.PI / 2 - 0.35;
       g.add(ring);
+    }
+    if (type === 'earth' && TEX.photo) {
+      const cl = new T.Mesh(new T.SphereGeometry(radius * 1.012, 48, 32), new T.MeshStandardMaterial({ color: 0xffffff, alphaMap: TEX.photo.earthClouds, transparent: true, depthWrite: false, roughness: 1 }));
+      s.add(cl);
     }
     g.userData.sphere = s;
     return g;
