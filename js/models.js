@@ -565,11 +565,13 @@ const Models = (() => {
       const mat = new T.MeshBasicMaterial({ color: col, vertexColors: true, transparent: true, opacity: op, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
       const c = new T.Mesh(geo, mat);
       c.rotation.x = Math.PI; c.position.y = -len * lm / 2;
+      mat.userData.op = op;
       g.add(c);
     }
     // Mach diamonds: standing shock knots in a supersonic jet
     if (!diamondGeo) diamondGeo = new T.SphereGeometry(1, 12, 8);
     const dm = new T.MeshBasicMaterial({ color: cols[0], transparent: true, opacity: 0.5, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
+    g.userData.diamonds = dm;
     for (let i = 0; i < 4; i++) {
       const d = new T.Mesh(diamondGeo, dm), s = 1 - i * 0.17;
       d.scale.set(r * 0.36 * s, len * 0.045, r * 0.36 * s); d.position.y = -len * (0.09 + i * 0.12);
@@ -579,24 +581,110 @@ const Models = (() => {
     glowS.scale.set(r * 6, r * 6, 1); glowS.position.y = -r * 0.5;
     g.add(glowS);
     g.userData.baseLen = len;
+    g.userData.mats = g.children.filter(o => o.isMesh && o.geometry.type === 'ConeGeometry').map(o => o.material);
+    return g;
+  }
+  // transonic vapour cone: condensation around the hull when the rocket punches through Mach 1
+  // in moist, dense air; open toward the tail, densest just behind its leading edge
+  function vaporCone(L, R) {
+    const geo = new T.CylinderGeometry(R * 1.15, R * 3.2, L * 0.6, 40, 6, true);
+    const mat = new T.ShaderMaterial({
+      uniforms: { alpha: { value: 0 }, time: { value: 0 } },
+      vertexShader: 'varying vec2 vUv; varying float vRim; void main(){ vUv = uv; vec3 n = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vRim = 1.0 - abs(dot(n, normalize(-mv.xyz))); gl_Position = projectionMatrix * mv; }',
+      fragmentShader: [
+        'uniform float alpha; uniform float time; varying vec2 vUv; varying float vRim;',
+        'void main(){',
+        '  float lead = (1.0 - smoothstep(0.86, 1.0, vUv.y)) * smoothstep(0.0, 0.7, vUv.y);',
+        '  float streak = 0.7 + 0.3 * sin(vUv.x * 70.0 + sin(vUv.x * 13.0 + time * 3.0) * 2.0) * sin(vUv.y * 21.0 - time * 5.0);',
+        '  float a = alpha * lead * streak * (0.6 + 0.4 * vRim);',
+        '  gl_FragColor = vec4(vec3(0.97, 0.98, 1.0), min(0.92, a * 1.25));',
+        '}'].join('\n'),
+      transparent: true, depthWrite: false, side: T.DoubleSide,
+    });
+    const m = new T.Mesh(geo, mat);
+    m.position.y = L * 0.02; m.visible = false; m.renderOrder = 2;
+    return m;
+  }
+  // re-entry plasma: a glowing shock layer wrapped round the nose and a long ionised wake behind the tail
+  function plasmaShell(L, R) {
+    const g = new T.Group();
+    const pts = [];
+    for (let i = 0; i <= 16; i++) { const t = i / 16; pts.push([R * 3 * Math.sqrt(t) + 0.0001, L / 2 + R * 0.8 - t * L * 0.6]); }
+    pts.reverse();
+    const shellMat = new T.ShaderMaterial({
+      uniforms: { alpha: { value: 0 }, time: { value: 0 } },
+      vertexShader: 'varying vec2 vUv; varying float vRim; void main(){ vUv = uv; vec3 n = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vRim = 1.0 - abs(dot(n, normalize(-mv.xyz))); gl_Position = projectionMatrix * mv; }',
+      fragmentShader: [
+        'uniform float alpha; uniform float time; varying vec2 vUv; varying float vRim;',
+        'void main(){',
+        '  float front = vUv.y;',                                   // 1 at the stagnation point, 0 at the trailing edge
+        '  vec3 col = mix(vec3(0.85, 0.18, 0.6), vec3(1.0, 0.42, 0.12), smoothstep(0.15, 0.55, front));',
+        '  col = mix(col, vec3(1.0, 0.78, 0.45), smoothstep(0.8, 1.0, front));',
+        '  float flick = 0.8 + 0.2 * sin(time * 37.0 + vUv.x * 40.0) * sin(time * 23.0 - vUv.y * 17.0);',
+        '  float a = alpha * flick * (0.4 + 1.1 * pow(vRim, 1.5) + 0.9 * smoothstep(0.8, 1.0, front)) * smoothstep(0.0, 0.35, front);',
+        '  gl_FragColor = vec4(col * 1.35, a);',
+        '}'].join('\n'),
+      transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide, toneMapped: false,
+    });
+    g.add(new T.Mesh(lathe(pts, 40), shellMat));
+    const wakeMat = new T.ShaderMaterial({
+      uniforms: { alpha: { value: 0 }, time: { value: 0 } },
+      vertexShader: 'varying vec2 vUv; varying float vRim; void main(){ vUv = uv; vec3 n = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vRim = 1.0 - abs(dot(n, normalize(-mv.xyz))); gl_Position = projectionMatrix * mv; }',
+      fragmentShader: [
+        'uniform float alpha; uniform float time; varying vec2 vUv; varying float vRim;',
+        'void main(){',
+        '  float along = vUv.y;',                                    // 1 at the tail, 0 far behind
+        '  float streak = 0.45 + 0.55 * sin(vUv.x * 60.0 + time * 13.0 + along * 11.0) * sin(vUv.x * 23.0 - time * 7.0);',
+        '  vec3 col = mix(vec3(0.6, 0.18, 0.75), vec3(1.0, 0.5, 0.2), pow(along, 2.0));',
+        '  float core = 1.0 - 0.75 * vRim;',                          // a glowing gas column is brightest down its middle
+        '  gl_FragColor = vec4(col * 1.3, alpha * pow(along, 2.4) * max(streak, 0.15) * core * 0.45);',
+        '}'].join('\n'),
+      transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide, toneMapped: false,
+    });
+    const wake = new T.Mesh(new T.CylinderGeometry(R * 1.1, R * 2.6, L * 2.6, 32, 1, true), wakeMat);
+    wake.position.y = -L / 2 - L * 1.3 + L * 0.1;
+    g.add(wake);
+    const hot = new T.Sprite(glowMat(0xff6a2a, 0));
+    hot.scale.set(R * 12, R * 12, 1); hot.position.y = L / 2 + R * 0.3; g.add(hot);
+    g.visible = false;
+    g.userData.mats = [shellMat, wakeMat];
+    g.userData.hot = hot;
     return g;
   }
   // shared tail of every rocket: shadows, flames, the throttle
   function finishRocket(root, L, R, flames, bells) {
     // glowing parts (flames, halo) are light, not solid: they cast no shadow
     root.traverse(o => { if (o.isMesh) o.castShadow = o.material.blending !== T.AdditiveBlending; });
+    const inner = root.children[0];
+    const vapor = vaporCone(L, R), plasma = plasmaShell(L, R);
+    inner.add(vapor, plasma);
     let flick = 0;
     root.userData = {
       length: L, radius: R, flames,
-      // level 0..1.6 (1 = boost, >1 = turbo)
-      setThrust(level, t) {
+      // level 0..1.6 (1 = boost, >1 = turbo); vac 0..1: in thin air the under-expanded plume balloons
+      // wide and turns translucent, and the shock diamonds of the dense-air jet disappear
+      setThrust(level, t, vac = 0) {
         flick = 0.85 + Math.sin(t * 47) * 0.07 + Math.random() * 0.14;
+        const wide = 1 + 1.7 * vac, long = 1 + 0.35 * vac;
         flames.forEach(f => {
           const l = level * (f.userData.k || 1);
           f.visible = l > 0.02;
-          if (f.visible) f.scale.set(0.7 + 0.3 * Math.min(1, l), Math.max(0.05, l * flick), 0.7 + 0.3 * Math.min(1, l));
+          if (!f.visible) return;
+          const w = (0.7 + 0.3 * Math.min(1, l)) * wide;
+          f.scale.set(w, Math.max(0.05, l * flick * long), w);
+          f.userData.diamonds.opacity = 0.5 * (1 - vac);
+          for (const m of f.userData.mats) m.opacity = m.userData.op * (1 - 0.45 * vac);
         });
         for (const b of bells) b.userData.glow.material.opacity = Math.min(1, level) * 0.9;
+      },
+      setVapor(a, t) {
+        vapor.visible = a > 0.01;
+        vapor.material.uniforms.alpha.value = a; vapor.material.uniforms.time.value = t;
+      },
+      setPlasma(a, t) {
+        plasma.visible = a > 0.01;
+        for (const m of plasma.userData.mats) { m.uniforms.alpha.value = a; m.uniforms.time.value = t; }
+        plasma.userData.hot.material.opacity = Math.min(1, a) * (0.75 + 0.25 * Math.sin(t * 31));
       },
     };
     root.userData.setThrust(0, 0);
@@ -1118,9 +1206,57 @@ const Models = (() => {
   }
 
   // ---------- backdrop bodies ----------
+  // the Earth's atmosphere seen from space: a thin bright limb, blue on the day side, orange at the
+  // terminator, dark at night. Brightness follows how close the view ray grazes the surface.
+  function atmosphereShell(radius) {
+    const top = radius * 1.035;
+    const mat = new T.ShaderMaterial({
+      uniforms: { sunDir: { value: new T.Vector3(0.4, 0.6, -0.7).normalize() }, r0: { value: radius }, r1: { value: top } },
+      vertexShader: 'varying vec3 vWorld; varying vec3 vCenter; varying float vScale; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; vCenter = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz; vScale = length(modelMatrix[0].xyz); gl_Position = projectionMatrix * viewMatrix * w; }',
+      fragmentShader: [
+        'uniform vec3 sunDir; uniform float r0; uniform float r1; varying vec3 vWorld; varying vec3 vCenter; varying float vScale;',
+        'void main(){',
+        '  vec3 o = vCenter;',
+        '  float sc = vScale;',
+        '  float R0 = r0 * sc, R1 = r1 * sc;',
+        '  vec3 d = normalize(vWorld - cameraPosition);',
+        '  vec3 oc = o - cameraPosition;',
+        '  float tc = dot(oc, d);',
+        '  vec3 closest = cameraPosition + d * tc;',
+        '  float h = (length(closest - o) - R0) / (R1 - R0);',          // 0 grazing the ground, 1 at the top of the air
+        '  float glow = exp(-max(h, 0.0) * 3.2) * (1.0 - smoothstep(0.85, 1.0, h));',
+        // from inside the air (low orbit) only rays toward the planet cross much of it: looking up stays black
+        '  glow *= smoothstep(-0.12, 0.03, dot(d, normalize(oc)));',
+        '  float day = dot(normalize(closest - o), sunDir);',
+        '  vec3 col = mix(vec3(1.0, 0.45, 0.2), vec3(0.32, 0.6, 1.0), smoothstep(-0.05, 0.35, day));',
+        '  float lit = smoothstep(-0.35, 0.15, day);',
+        '  gl_FragColor = vec4(col * glow * (0.08 + 1.1 * lit), 1.0);',
+        '}'].join('\n'),
+      side: T.BackSide, transparent: true, depthWrite: false, blending: T.AdditiveBlending,
+    });
+    const m = new T.Mesh(new T.SphereGeometry(top, 64, 32), mat);
+    m.userData.atmosphere = true;
+    return m;
+  }
   function planet(type, radius) {
     const g = new T.Group();
     const mat = new T.MeshStandardMaterial({ map: TEX[type], roughness: 1, metalness: 0 });
+    if (type === 'earth' && TEX.photo) {
+      mat.onBeforeCompile = sh => {
+        sh.uniforms.detail = { value: TEX.photo.rock };
+        sh.fragmentShader = 'uniform sampler2D detail;\n' + sh.fragmentShader
+          .replace('#include <map_fragment>', [
+            '#include <map_fragment>',
+            'float land = smoothstep(0.02, 0.14, diffuseColor.r + diffuseColor.g * 0.5 - diffuseColor.b);',
+            'float dl = dot(texture2D(detail, vMapUv * vec2(240.0, 120.0)).rgb, vec3(0.45));',
+            'diffuseColor.rgb *= mix(1.0, clamp(0.55 + dl * 1.3, 0.6, 1.4), 0.5 * land);'].join('\n'))
+          .replace('#include <opaque_fragment>', [
+            // seen through the air the ground turns blue, the more so toward the horizon
+            'float ndv = clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);',
+            'outgoingLight = mix(outgoingLight, vec3(0.3, 0.5, 0.9) * 0.6, 0.12 + 0.75 * pow(1.0 - ndv, 3.0));',
+            '#include <opaque_fragment>'].join('\n'));
+      };
+    }
     const s = new T.Mesh(new T.SphereGeometry(radius, 48, 32), mat);
     g.add(s);
     if (type === 'saturn') {
@@ -1132,6 +1268,7 @@ const Models = (() => {
       ring.rotation.x = Math.PI / 2 - 0.35;
       g.add(ring);
     }
+    if (type === 'earth') g.add(atmosphereShell(radius));
     if (type === 'earth' && TEX.photo) {
       const cl = new T.Mesh(new T.SphereGeometry(radius * 1.012, 48, 32), new T.MeshStandardMaterial({ color: 0xffffff, alphaMap: TEX.photo.earthClouds, transparent: true, depthWrite: false, roughness: 1 }));
       s.add(cl);

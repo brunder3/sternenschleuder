@@ -37,6 +37,7 @@
     objs: [], texts: [], shake: 0, flash: 0, flashRgb: [255, 255, 255],
     spawnLast: { x: 0, y: 0 }, acc: {}, endTimer: 0, endReason: '', combo: 0, comboT: 0,
     lastZone: 0, descendT: 0, skipShown: false, hudCache: {}, tipT: 0, slowmo: 0, roll: 0, crashed: false, splash: false,
+    reentry: null,
   };
   const RR = 18;                         // rocket hit radius (u)
   const PAD_Y = World.heightAt(0, 0);
@@ -168,7 +169,7 @@
   }
   function startFromTitle() { Sfx.init(); Sfx.click(); toMenu(); }
   function toMenu() {
-    G.state = 'menu'; G.rocket = null; G.run = null; G.crashed = false; G.splash = false;
+    G.state = 'menu'; G.rocket = null; G.run = null; G.crashed = false; G.splash = false; G.reentry = null;
     clearObjects(); World.fx.clear(); G.texts.length = 0;
     stats = computeStats(save);
     setRocketMesh(save.rocket);
@@ -199,7 +200,7 @@
     r.x = pose.cx / S; r.px = r.x;
     const v = launchSpeed(stats, p);
     r.vx = Math.cos(G.angle) * v; r.vy = Math.sin(G.angle) * v;
-    G.rocket = r; G.run = newRun(); G.crashed = false; G.splash = false;
+    G.rocket = r; G.run = newRun(); G.crashed = false; G.splash = false; G.reentry = null;
     G.state = 'flight'; G.paused = false;
     G.lastZone = 0; G.combo = 0; G.descendT = 0; G.skipShown = false;
     G.tipT = save.stats.flights < 3 ? 5 : 0;
@@ -235,6 +236,7 @@
   }
   function groundU(xu) { return Math.max(0, World.surfaceAt(xu * S, 0)) / S; }
   function updateFlight(dt) {
+    if (G.reentry) { updateReentry(dt); return; }
     const r = G.rocket, run = G.run;
     const inp = { boost: boostHeld(), turn: steerInput(), target: null };
     if (r.spin) { r.a += r.spin * dt; r.spin *= Math.pow(0.03, dt); if (Math.abs(r.spin) < 0.08) r.spin = 0; }
@@ -278,10 +280,53 @@
     collide(r, dt);
     if (r.fuel <= 0 && r.turboT <= 0 && r.vy < 0) {
       G.descendT += dt;
-      // only skip the long fall when nothing can happen any more (no turbo, no bounce left)
+      // only skip the long fall when nothing can happen any more (no turbo, no bounce left);
+      // from near space the rocket comes home through a re-entry instead
+      if (G.descendT > 2.5 && r.turbo <= 0 && r.bounces <= 0 && Hh > ZH.meso) { startReentry(); return; }
       if (G.descendT > 6 && r.turbo <= 0 && r.bounces <= 0 && Hh > ZH.wolken) { endFlight('skip'); return; }
     } else G.descendT = 0;
     if (run.time > 600) endFlight('skip');
+  }
+  // ================= re-entry =================
+  // A rocket that falls back from space is not cut straight to the results: if it was far out it first
+  // races home to the edge of space, then it dives through the atmosphere in a sheath of glowing plasma
+  // (peak heating around 60 to 70 km), slows down in the thicker air and hands over to the results at ~9 km.
+  const RE_RETURN = 2.4, RE_ENTRY = 7.5;
+  function startReentry() {
+    const r = G.rocket, H0 = Math.max(0, r.y), far = H0 > ZH.space * 1.15;
+    G.reentry = { t: far ? 0 : RE_RETURN, H0, Hb: far ? ZH.space * 1.1 : H0, v: 0, heat: 0, A: 0, told: false, far };
+    clearObjects();
+  }
+  function reentryHeight(t) {
+    const R = G.reentry;
+    if (t < RE_RETURN) { const k = smooth(0, 1, t / RE_RETURN); return Math.exp(lerp(Math.log(R.H0), Math.log(R.Hb), k)); }
+    const k = clamp((t - RE_RETURN) / RE_ENTRY, 0, 1);
+    return lerp(R.Hb, ZH.jet * 0.92, 0.5 - 0.5 * Math.cos(Math.PI * k));
+  }
+  function updateReentry(dt) {
+    const r = G.rocket, R = G.reentry;
+    R.t += dt;
+    if (R.t >= RE_RETURN + RE_ENTRY) { endFlight('skip'); return; }
+    const H = reentryHeight(R.t), vy = (reentryHeight(R.t + 0.04) - H) / 0.04;
+    r.px = r.x; r.py = r.y;
+    r.y = H; r.vy = vy;
+    // a shallow entry: the rocket travels about twice as far as it falls
+    r.vx = Math.max(140, Math.min(Math.abs(vy) * 2, 1400));
+    r.x += r.vx * dt;
+    r.boosting = false; r.turboT = 0;
+    // nose into the airflow
+    const target = Math.max(-1.3, Math.atan2(r.vy, r.vx));
+    r.a += angDiff(r.a, target) * Math.min(1, dt * 2.5);
+    // real speed and heating (Sutton-Graves: heat flux grows with the square root of the density and v^3)
+    const A = altitudeAt(H);
+    R.A = A;
+    R.v = R.t < RE_RETURN ? lerp(11200, 7800, R.t / RE_RETURN) : lerp(320, 7800, smooth(14e3, 78e3, A));
+    const rho = Math.exp(-A / 7200);
+    R.heat = clamp(Math.sqrt(rho) * Math.pow(R.v, 3) / 3.7e9, 0, 1.2);
+    if (!R.told && R.heat > 0.12) {
+      R.told = true;
+      showBanner('Wiedereintritt', 'Plasma!', 'Die Luft vor der Rakete wird über 1.500 °C heiß und leuchtet.');
+    }
   }
   function endFlight(reason) {
     if (G.state !== 'flight') return;
@@ -754,7 +799,23 @@
     G.roll += dt * (r.boosting || r.turboT > 0 ? 2.4 : 0.7);
     rocketMesh.rotation.x = st === 'ending' ? rocketMesh.rotation.x : G.roll;
     const level = st === 'flight' ? (r.turboT > 0 ? 1.6 : r.boosting ? 1 : 0) : 0;
-    rocketMesh.userData.setThrust(level, G.t);
+    const Hh = Math.max(0, r.y), A = altitudeAt(Hh), rhoR = Math.exp(-A / 7200);
+    rocketMesh.userData.setThrust(level, G.t, smooth(12e3, 60e3, A));
+    // condensation cloud round the hull while it punches through the sound barrier in dense air
+    const mach = st === 'flight' && !G.reentry ? displaySpeed(Math.hypot(r.vx, r.vy), Hh) / 343 : 0;
+    rocketMesh.userData.setVapor(Math.exp(-Math.pow((mach - 1.0) / 0.1, 2)) * smooth(0.2, 0.6, rhoR) * 0.95, G.t);
+    const heat = G.reentry && st === 'flight' ? G.reentry.heat : 0;
+    rocketMesh.userData.setPlasma(Math.min(1, heat * 1.1), G.t);
+    if (heat > 0.05 && dt > 0) {
+      // sparks and ablating flecks stream off the glowing nose
+      const L = rocketMesh.userData.length, ca = Math.cos(r.a), sa = Math.sin(r.a);
+      const nx = r.x * S + ca * L * 0.45, ny = r.y * S + sa * L * 0.45, vx = r.vx * S, vy = r.vy * S;
+      for (let i = 0, n = Math.round(heat * 5); i < n; i++) {
+        const back = rand(20, 60);
+        World.fx.add({ x: nx + rand(-0.5, 0.5), y: ny + rand(-0.5, 0.5), z: rand(-1, 1), vx: vx * 0.7 - ca * back + rand(-4, 4), vy: vy * 0.7 - sa * back + rand(-4, 4), vz: rand(-5, 5), life: rand(0.25, 0.7), size: rand(0.6, 1.6), drag: 2, c: [1, 0.85, 0.55], c2: [1, 0.3, 0.45] });
+      }
+      if (!reduceMotion) G.shake = Math.max(G.shake, heat * 6);
+    }
     if (st !== 'flight' || !level) return;
     // exhaust particles
     const L = rocketMesh.userData.length;
@@ -772,11 +833,14 @@
   }
 
   // ================= camera =================
-  const cam = { pos: new T.Vector3(-46, 30, 52), look: new T.Vector3(4, 12, 0), fov: 52, pitch: 0.5, blend: 0 };
-  const _cp = new T.Vector3(), _cl = new T.Vector3();
+  const cam = { pos: new T.Vector3(-46, 30, 52), look: new T.Vector3(4, 12, 0), fov: 52, pitch: 0.5, blend: 0,
+    rel: false, off: new T.Vector3(), loff: new T.Vector3() };
+  const _cp = new T.Vector3(), _cl = new T.Vector3(), _rp = new T.Vector3();
+  // smooth pseudo-random wobble for shake and rumble (white noise per frame looks like jitter)
+  const wob = (t, p) => Math.sin(t * 1.0 + p) * 0.55 + Math.sin(t * 2.31 + p * 1.7) * 0.3 + Math.sin(t * 4.73 + p * 2.9) * 0.15;
   function updateCamera(dt) {
     const st = G.state;
-    let fov = 55;
+    let fov = 55, rel = false, rate = 3, rumble = 0;
     if (st === 'menu' || st === 'title') {
       const a = G.t * 0.06;
       const portrait = W < H;
@@ -790,32 +854,61 @@
       fov = W < H ? 72 : 55;
     } else if (G.rocket) {
       // chase camera behind the rocket: looks down at the land in level flight and tilts up on steep climbs,
-      // so whatever lies ahead on the flight path stays in view
-      const r = G.rocket, sp = Math.hypot(r.vx, r.vy) * S;
+      // so whatever lies ahead on the flight path stays in view. It rides on a damped offset from the
+      // rocket, so it never falls behind a fast rocket but still swings softly when the course changes.
+      const r = G.rocket, sp = Math.hypot(r.vx, r.vy) * S, Hh = Math.max(0, r.y);
       const va = sp > 0.5 ? Math.atan2(r.vy, r.vx) : r.a;
       cam.pitch += (clamp(va, -0.6, 1.4) - cam.pitch) * Math.min(1, dt * 2.2);
-      const lp = clamp(cam.pitch * 0.78 - 0.3, -0.55, 0.8);
+      let lp = clamp(cam.pitch * 0.78 - 0.3, -0.55, 0.8);
+      // near space the view levels out a little so the curved horizon and the glowing air stay in the shot
+      lp -= 0.16 * smooth(ZH.strato, ZH.space, Hh) * (1 - smooth(ZH.orbit, ZH.geo, Hh));
       const cdx = Math.cos(lp), cdy = Math.sin(lp);
       const d = 20 + Math.min(40, sp * 0.06), h = 0.12 * d + 2.5;
-      const rx = r.x * S, ry = r.y * S;
-      _cp.set(rx - cdx * d, ry - cdy * d + h, d * 0.22);
-      _cl.set(rx + cdx * 40, ry + cdy * 40 + h * 0.35, 0);
+      _rp.set(r.x * S, r.y * S, 0);
+      _cp.set(-cdx * d, -cdy * d + h, d * 0.22);
+      _cl.set(cdx * 40, cdy * 40 + h * 0.35, 0);
       fov = (W < H ? 76 : 62) + Math.min(14, sp * 0.028);
-      if (st === 'ending') { _cp.set(rx - 26, ry + 12, 16); _cl.set(rx, ry, 0); }
+      rel = true;
+      const run = G.run;
+      // after the launch the camera eases from the pad shot into the chase position
+      rate = st === 'flight' ? lerp(2.5, 7, smooth(0.1, 2.2, run ? run.time : 9)) : 2.5;
+      if (G.reentry && st === 'flight') {
+        // re-entry: a three-quarter view from the side shows the plasma sheath, the wake and the Earth below
+        // the gaze stays nearly level, so the curved horizon and the black sky above it frame the shot
+        const ca = Math.cos(r.a), sa = Math.sin(r.a);
+        _cp.set(-ca * 11, -sa * 11 + 0.5, 17);
+        _cl.set(ca * 3, sa + 1.5, 0);
+        fov = W < H ? 72 : 58;
+        rate = 1.6;
+        rumble = G.reentry.heat * 0.25;
+      } else if (st === 'flight' && (r.boosting || r.turboT > 0)) {
+        // engines at full power shake the camera, most in dense air near the ground
+        rumble = (r.turboT > 0 ? 0.16 : 0.08) * Math.exp(-altitudeAt(Hh) / 9000);
+      }
+      if (st === 'ending') { _cp.set(-26, 12, 16); _cl.set(0, 0, 0); rate = 2.5; }
     }
-    // smooth only the transitions; in flight the camera rides with the rocket
-    const k = st === 'flight' ? 1 - Math.exp(-dt * (G.run && G.run.time < 0.8 ? 4 : 14)) : 1 - Math.exp(-dt * 3);
-    cam.pos.lerp(_cp, k); cam.look.lerp(_cl, k);
+    const k = 1 - Math.exp(-dt * rate);
+    if (rel) {
+      if (!cam.rel) { cam.off.copy(cam.pos).sub(_rp); cam.loff.copy(cam.look).sub(_rp); }
+      cam.off.lerp(_cp, k); cam.loff.lerp(_cl, k);
+      cam.pos.copy(_rp).add(cam.off); cam.look.copy(_rp).add(cam.loff);
+    } else {
+      cam.pos.lerp(_cp, k); cam.look.lerp(_cl, k);
+    }
+    cam.rel = rel;
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 3);
     const gy = Math.max(0, World.surfaceAt(cam.pos.x, cam.pos.z)) + 2;
     if (cam.pos.y < gy) cam.pos.y = gy;
     camera.position.copy(cam.pos);
-    if (G.shake > 0 && !reduceMotion) {
-      camera.position.x += (Math.random() * 2 - 1) * G.shake * 0.06;
-      camera.position.y += (Math.random() * 2 - 1) * G.shake * 0.06;
+    let sh = 0;
+    if (!reduceMotion) {
+      sh = G.shake * 0.06 + rumble;
+      camera.position.x += wob(G.t * 21, 0.3) * sh;
+      camera.position.y += wob(G.t * 19, 2.1) * sh;
       G.shake = Math.max(0, G.shake - dt * 30);
     } else G.shake = 0;
     camera.lookAt(cam.look);
+    if (sh > 0) camera.rotateZ(wob(G.t * 13, 4.2) * sh * 0.012);
     if (Math.abs(camera.fov - cam.fov) > 0.05) { camera.fov = cam.fov; camera.updateProjectionMatrix(); }
   }
 
@@ -834,7 +927,7 @@
     setText('pPct', deNum(p * 100, 1) + ' %');
     const pw = (p * 100).toFixed(1);
     if (G.hudCache.pw !== pw) { G.hudCache.pw = pw; $('pFill').style.width = `calc(${pw}% - 4px)`; $('pMark').style.left = pw + '%'; }
-    const vms = displaySpeed(Math.hypot(r.vx, r.vy), Hh);
+    const vms = G.reentry ? G.reentry.v : displaySpeed(Math.hypot(r.vx, r.vy), Hh);
     const kmh = vms * 3.6;
     const [sv, su] = fmtSpeedParts(vms);
     setText('hSpd', sv); setText('hSpdU', su);
@@ -860,6 +953,9 @@
     if (G.hudCache.armor !== r.armor) { G.hudCache.armor = r.armor; $('hArmor').innerHTML = '<i class="pip"></i>'.repeat(Math.max(0, r.armor)); }
     const showSkip = G.state === 'flight' && r.fuel <= 0 && r.turboT <= 0 && r.turbo <= 0 && r.vy < 0 && Hh > 600;
     if (showSkip !== G.skipShown) { G.skipShown = showSkip; $('btnSkip').hidden = !showSkip; }
+    // during the re-entry the button moves out of the middle, where the camera frames the rocket
+    const re = !!G.reentry;
+    if (G.hudCache.re !== re) { G.hudCache.re = re; $('btnSkip').classList.toggle('re', re); $('btnSkip').textContent = re ? 'Überspringen' : 'Landung überspringen'; }
     if (G.tipT <= 0 && !$('flightTip').hidden) $('flightTip').hidden = true;
   }
   function updateCharge(dt) {
@@ -1284,7 +1380,11 @@
   $('btnPause').onclick = () => togglePause();
   $('btnResume').onclick = () => togglePause();
   $('btnAbort').onclick = () => { $('pause').hidden = true; G.paused = false; G.overlay = null; endFlight('abort'); };
-  $('btnSkip').onclick = () => { if (!G.paused) endFlight('skip'); };
+  // from near space the first press starts the re-entry; a second press (or a lower fall) skips to the results
+  $('btnSkip').onclick = () => {
+    if (G.paused) return;
+    if (G.state === 'flight' && !G.reentry && G.rocket && G.rocket.y > ZH.meso) startReentry(); else endFlight('skip');
+  };
   function togglePause() {
     if (G.state !== 'flight') return;
     G.paused = !G.paused;
@@ -1310,9 +1410,10 @@
       let n = 0;
       while (acc >= step && n < 24 && G.state === 'flight') { updateFlight(step); acc -= step; n++; }
       if (G.state === 'flight') {
-        spawnTick();
+        if (!G.reentry) spawnTick();
         const r = G.rocket;
-        Sfx.thrust(r.turboT > 0 ? 1.3 : r.boosting ? 1 : 0, airDensity(Math.max(0, r.y)) < 0.05);
+        if (G.reentry) Sfx.thrust(Math.min(1, G.reentry.heat * 0.9), false);
+        else Sfx.thrust(r.turboT > 0 ? 1.3 : r.boosting ? 1 : 0, airDensity(Math.max(0, r.y)) < 0.05);
         updateHUD();
         G.comboT -= dt;
         if (G.tipT > 0) G.tipT -= dt;

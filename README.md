@@ -16,6 +16,15 @@ Himmel, Boden (Gras, Fels, Sand, Erde), Wolken, Wasser, die Milchstraße sowie E
 
 Drei Raketen sind originalgetreue NASA-Modelle: Spatz ist eine Jupiter-C, Polaris eine Ares I-X und Titan eine Saturn V mit fünf Triebwerken. Neben der Startschiene steht der Startturm des Mobile Launcher. Die übrigen Raketen werden zur Laufzeit gebaut: geschweißte Blechringe mit Nieten, Kabelkanal, Steuerdüsen, aufgemalter Name, Ruß am Heck und echte Triebwerksglocken (bei langen Raketen drei oder fünf), deren Abgasstrahl Machsche Knoten zeigt. Die Startrampe hat eine Betonplatte mit Fugen und Brandspuren und eine Startschiene aus geschweißtem Stahlfachwerk.
 
+Der Weg ins All folgt der echten Atmosphäre:
+- Über dem Jetstream liegen alle Wolken unter der Rakete. Ab der Stratosphäre wird der Himmel über ihr dunkel, und die Luft schrumpft zu einem leuchtenden Saum über dem Horizont, der mit der Höhe absinkt.
+- Ab etwa 50 km versinkt das Land im blauen Dunst und geht in die gekrümmte Erdkugel mit ihrer Atmosphäre über.
+- Beim Durchbrechen der Schallmauer bildet sich ein Kondensationskegel um die Rakete. Im Vakuum weitet sich der Abgasstrahl auf, und die Machschen Knoten verschwinden.
+
+Wer aus dem All zurückfällt, erlebt den Wiedereintritt: Die Rakete stürzt mit 7,8 km/s in die Atmosphäre, umhüllt von Plasma, einer Funkenspur und einem leuchtenden Schweif. Die stärkste Hitze kommt bei 60 bis 70 km. Danach bremst die dichter werdende Luft sie ab.
+
+Die Kamera folgt der Rakete über einen gedämpften Versatz, fällt also auch bei hohem Tempo nicht zurück. Sie wackelt weich statt zu zittern und senkt den Blick im All, damit Horizont und Erde im Bild bleiben. Beim Wiedereintritt zeigt sie die Rakete schräg von der Seite.
+
 Auf Computern läuft die volle Grafik mit Bloom (leuchtende Flammen, Sonne und Sterne), Kantenglättung und Spiegelungen des Himmels auf Wasser und Raketenlack. Auf Handys und schwächeren Geräten fällt der Bloom weg, damit das Spiel flüssig bleibt. Umschalten lässt sich die Stufe im Menü über das Fragezeichen (Grafik: Hoch oder Niedrig). Die Wahl merkt sich der Browser. Alternativ erzwingt `?grafik=hoch` oder `?grafik=niedrig` hinter der Adresse die Stufe.
 
 ## Steuerung
