@@ -7,8 +7,8 @@
 const ZONES = [
   { id:'wiese',   name:'Startwiese',         H:0,     A:0,        val:1,     desc:'Hier fängt alles an.' },
   { id:'voegel',  name:'Vogelzug',           H:800,   A:80,       val:2,     desc:'Zugvögel kreuzen die Flugbahn.' },
-  { id:'wolken',  name:'Wolkenmeer',         H:1100,  A:500,      val:4,     desc:'Ab hier wird alles weiß.' },
-  { id:'jet',     name:'Jetstream',          H:1500,  A:3000,     val:9,     desc:'Kräftiger Höhenwind schiebt dich nach rechts.' },
+  { id:'wolken',  name:'Wolkenmeer',         H:1100,  A:1000,     val:4,     desc:'Ab hier wird alles weiß.' },
+  { id:'jet',     name:'Jetstream',          H:1500,  A:9000,     val:9,     desc:'In Reiseflughöhe schiebt dich der Höhenwind nach rechts.' },
   { id:'strato',  name:'Stratosphäre',       H:2050,  A:12000,    val:11,    desc:'Über dem Wetter beginnt die Ozonschicht.' },
   { id:'meso',    name:'Mesosphäre',         H:2800,  A:50000,    val:14,    desc:'Hier verglühen die Sternschnuppen.' },
   { id:'space',   name:'Weltraum',           H:3850,  A:100000,   val:17,    desc:'Kármán-Linie überquert: 100 km über dem Meer.' },
@@ -20,7 +20,17 @@ const ZONES = [
   { id:'jupiter', name:'Jupiter',            H:25550, A:6.3e11,   val:110,  desc:'Sein roter Fleck ist ein uralter Sturm.' },
   { id:'saturn',  name:'Saturn',             H:34950, A:1.28e12,  val:190, desc:'Ringe aus Eis und Gestein.' },
   { id:'edge',    name:'Heliopause',         H:47900, A:1.8e13,   val:260, desc:'Hier endet der Sonnenwind. Dahinter: die Sterne.' },
+  // beyond the Solar System (1 light-year = 9,46e15 m)
+  { id:'oort',    name:'Oortsche Wolke',     H:65600,  A:3.0e14,  val:325,  desc:'Milliarden Eisbrocken: die Heimat der Kometen.' },
+  { id:'proxima', name:'Proxima Centauri',   H:89900,  A:4.01e16, val:647,  desc:'4,24 Lichtjahre: der nächste Stern nach der Sonne.' },
+  { id:'wega',    name:'Wega',               H:123000, A:2.37e17, val:3370,  desc:'Ein blauweißer Riese, 25 Lichtjahre von der Erde.' },
+  { id:'plejaden',name:'Plejaden',           H:169000, A:4.2e18,  val:4220, desc:'Das Siebengestirn: ein Haufen junger blauer Sterne.' },
+  { id:'orionnebel', name:'Orionnebel',      H:231000, A:1.27e19, val:27600, desc:'Eine leuchtende Wolke, in der neue Sterne entstehen.' },
+  { id:'zentrum', name:'Milchstraßenzentrum',H:317000, A:2.46e20, val:96800, desc:'26.000 Lichtjahre: hier wohnt ein Schwarzes Loch.' },
+  { id:'andromeda', name:'Andromeda',        H:434000, A:2.4e22,  val:136000, desc:'2,5 Millionen Lichtjahre: die Nachbargalaxie.' },
 ];
+const LIGHTYEAR = 9.4607e15;   // metres
+const LIGHTSPEED = 299792458;  // m/s
 const ZH = Object.fromEntries(ZONES.map(z => [z.id, z.H]));
 // height a fraction f of the way from zone id to the next zone (f may be negative)
 function zoneFrac(id, f) {
@@ -28,7 +38,7 @@ function zoneFrac(id, f) {
   const a = ZONES[i].H, b = i < ZONES.length - 1 ? ZONES[i + 1].H : a * 1.25;
   return a + (b - a) * (f || 0);
 }
-const GOAL_H = ZH.edge;
+const GOAL_H = ZH.andromeda;
 const SPACE_H = ZH.space;
 const HEIGHT_BONUS = 14;
 
@@ -44,7 +54,7 @@ const PHYS = {
   // the rocket always flies forward: its nose stays between these pitch angles (radians)
   PITCH_MIN: -1.15,
   PITCH_MAX: 1.4,
-  // catapult: aim range on the pad and the power meter
+  // launch pad: tilt range of the launch rail and the ignition meter
   LAUNCH_MIN: 0.35,
   LAUNCH_MAX: 1.22,
   LAUNCH_DEFAULT: 0.8,
@@ -83,8 +93,28 @@ function altitudeAt(H) {
   if (H < ZONES[1].H) return H * ZONES[1].A / ZONES[1].H;
   return logInterp(H, 'A');
 }
-// metres per second per world unit of speed at height H (display only): 216 km/h at launch, ~300 km/s at the Heliopause
-function speedScaleAt(H) { return 0.1 * Math.pow(1 + Math.max(0, H) / 800, 1.6); }
+// Displayed speed in m/s for a speed in u/s at height H. The scale is tuned so that a rocket that has just
+// reached a zone shows a realistic speed there: Mach 1 in the jet stream, 7,8 km/s in orbit, 11,2 km/s
+// escape velocity, then fractions of light speed between the stars. It never reaches light speed.
+const SPEED_STOPS = [[0, 0.1], [800, 0.1202], [1100, 0.2739], [1500, 0.5004], [2050, 0.7613], [2800, 2.085], [3850, 3.167], [5300, 8.999], [7250, 10.53], [9950, 10.75], [13600, 14.02], [18650, 15.18], [25550, 16.04], [34950, 17.29], [47900, 21.23], [65600, 55.35], [89900, 7762], [123000, 2.244e+04], [169000, 5.422e+04], [231000, 1.053e+05], [317000, 1.987e+05], [434000, 3.351e+05]];
+function speedScaleAt(H) {
+  H = Math.max(0, H);
+  const A = SPEED_STOPS;
+  if (H <= A[0][0]) return A[0][1];
+  for (let i = 1; i < A.length; i++) if (H <= A[i][0]) return A[i - 1][1] * Math.pow(A[i][1] / A[i - 1][1], (H - A[i - 1][0]) / (A[i][0] - A[i - 1][0]));
+  return A[A.length - 1][1];
+}
+function displaySpeed(sp, H) {
+  const v = sp * speedScaleAt(H);
+  return LIGHTSPEED * -Math.expm1(-v / LIGHTSPEED);   // ~v when slow, approaches c without reaching it
+}
+// Time-lapse factor: how much faster the displayed altitude rises than the displayed speed would allow.
+// 1 near the ground; billions between the stars.
+function timeLapseAt(H) {
+  H = Math.max(0, H);
+  const dA = (altitudeAt(H + 2) - altitudeAt(Math.max(0, H - 2))) / (H + 2 - Math.max(0, H - 2));
+  return Math.max(1, dA / speedScaleAt(H));
+}
 function coinValueAt(H) {
   H = Math.max(0, H);
   return logInterp(H, 'val');
@@ -106,6 +136,13 @@ const SKY_STOPS = [
   { H: ZH.jupiter,            c: ['#0d0905', '#1b130b', '#2c1d10'] },
   { H: ZH.saturn,             c: ['#0a0907', '#17150d', '#272113'] },
   { H: ZH.edge,               c: ['#070214', '#160b34', '#2c104e'] },
+  { H: ZH.oort,               c: ['#02040c', '#081226', '#13243e'] },
+  { H: ZH.proxima,            c: ['#0c0304', '#1d0a0b', '#341214'] },
+  { H: ZH.wega,               c: ['#020818', '#0a1a3c', '#183068'] },
+  { H: ZH.plejaden,           c: ['#03081c', '#0d1c48', '#1d3a7c'] },
+  { H: ZH.orionnebel,         c: ['#12041a', '#2a0c34', '#4a1650'] },
+  { H: ZH.zentrum,            c: ['#120b04', '#2a1a0a', '#4a3214'] },
+  { H: ZH.andromeda,          c: ['#06040f', '#120c26', '#241a44'] },
 ];
 // chance that a cloud sits at height h (u)
 function cloudDensity(h) {
@@ -114,25 +151,28 @@ function cloudDensity(h) {
     + 0.5 * smooth(zoneFrac('voegel', 0.6), zoneFrac('wolken', 0.4), h) * (1 - smooth(zoneFrac('jet', 0.5), ZH.strato, h))
     + 0.12 * smooth(ZH.strato, zoneFrac('strato', 0.4), h) * (1 - smooth(zoneFrac('strato', 0.8), ZH.meso, h));
 }
+// between the stars there is little to refuel from: fuel cans (and the fuel from boost rings) thin out
+// beyond the Heliopause, so the tank and the engine decide how far a flight goes
+function fuelScarcity(H) { return H <= ZH.edge ? 1 : Math.max(0.08, Math.pow(ZH.edge / H, 1.3)); }
 function windAt(H) { return 110 * smooth(zoneFrac('jet', -0.05), zoneFrac('jet', 0.25), H) * (1 - smooth(zoneFrac('jet', 0.8), ZH.strato, H)); }
 
 // ---------- upgrades ----------
-// cost(L) = base * e^(k * L/max): every upgrade ends at the same multiple of its first price
+// cost(L) = base * e^(g * L): each level costs a fixed factor more than the one before
 const UPGRADES = [
-  { id:'sling', name:'Gummiband', max:20, base:24, k:20, desc:'Dickeres Gummi für einen kräftigeren Abschuss.' },
-  { id:'engine', name:'Triebwerk', max:30, base:40, k:20, desc:'Mehr Schub, solange du Gas gibst.' },
-  { id:'tank', name:'Tank', max:30, base:36, k:20, desc:'Größerer Tank, längere Brenndauer.' },
-  { id:'aero', name:'Aerodynamik', max:20, base:120, k:20, desc:'Glattere Hülle, weniger Luftwiderstand.' },
-  { id:'value', name:'Münzpräger', max:25, base:105, k:20, desc:'Jede Münze ist mehr wert.' },
-  { id:'eff', name:'Einspritzung', max:15, base:330, k:20, desc:'Weniger Verbrauch bei gleichem Schub.' },
-  { id:'magnet', name:'Münzmagnet', max:15, base:210, k:20, desc:'Zieht Münzen aus der Umgebung an.' },
-  { id:'steer', name:'Steuerdüsen', max:10, base:90, k:20, desc:'Engere Kurven, präziseres Lenken.' },
-  { id:'wings', name:'Gleitflügel', max:12, base:270, k:20, desc:'Auftrieb in der Luft für lange Gleitflüge.' },
-  { id:'fuelfind', name:'Kanister-Radar', max:12, base:420, k:20, desc:'Mehr und vollere Treibstoffkanister am Himmel.' },
-  { id:'luck', name:'Glückspilz', max:12, base:600, k:20, desc:'Mehr Gold, mehr Edelsteine.' },
-  { id:'armor', name:'Schutzschild', max:6, base:300, k:9.1, desc:'Wehrt je Ladung einen Zusammenstoß ab.' },
-  { id:'turbo', name:'Nachbrenner', max:5, base:600, k:9.3, desc:'Turbo-Zündungen pro Flug. Schiebt zusätzlich zum Booster und kostet keinen Treibstoff.' },
-  { id:'bounce', name:'Sprungfedern', max:4, base:200, k:10.4, desc:'Prallt bei der Landung wieder ab und fliegt weiter.' },
+  { id:'sling', name:'Startbooster', max:30, base:24, g:1, desc:'Stärkere Feststoffbooster an der Rampe für mehr Tempo beim Start.' },
+  { id:'engine', name:'Triebwerk', max:45, base:40, g:0.667, desc:'Mehr Schub, solange du Gas gibst.' },
+  { id:'tank', name:'Tank', max:45, base:36, g:0.667, desc:'Größerer Tank, längere Brenndauer.' },
+  { id:'aero', name:'Aerodynamik', max:30, base:120, g:1, desc:'Glattere Hülle, weniger Luftwiderstand.' },
+  { id:'value', name:'Münzpräger', max:40, base:105, g:0.8, desc:'Jede Münze ist mehr wert.' },
+  { id:'eff', name:'Einspritzung', max:22, base:330, g:1.333, desc:'Weniger Verbrauch bei gleichem Schub.' },
+  { id:'magnet', name:'Münzmagnet', max:20, base:210, g:1.333, desc:'Zieht Münzen aus der Umgebung an.' },
+  { id:'steer', name:'Steuerdüsen', max:12, base:90, g:2, desc:'Engere Kurven, präziseres Lenken.' },
+  { id:'wings', name:'Gleitflügel', max:15, base:270, g:1.667, desc:'Auftrieb in der Luft für lange Gleitflüge.' },
+  { id:'fuelfind', name:'Kanister-Radar', max:16, base:420, g:1.667, desc:'Mehr und vollere Treibstoffkanister am Himmel.' },
+  { id:'luck', name:'Glückspilz', max:16, base:600, g:1.667, desc:'Mehr Gold, mehr Edelsteine.' },
+  { id:'armor', name:'Schutzschild', max:8, base:300, g:1.517, desc:'Wehrt je Ladung einen Zusammenstoß ab.' },
+  { id:'turbo', name:'Nachbrenner', max:7, base:600, g:1.86, desc:'Turbo-Zündungen pro Flug. Schiebt zusätzlich zum Booster und kostet keinen Treibstoff.' },
+  { id:'bounce', name:'Sprungfedern', max:5, base:200, g:2.6, desc:'Prallt bei der Landung wieder ab und fliegt weiter.' },
 ];
 const UPG = Object.fromEntries(UPGRADES.map(u => [u.id, u]));
 
@@ -141,7 +181,7 @@ function niceRound(n) {
   const p = Math.pow(10, Math.floor(Math.log10(n)) - 1);
   return Math.round(n / p) * p;
 }
-function upgradeCost(u, level) { return niceRound(u.base * Math.exp(u.k * level / u.max)); }
+function upgradeCost(u, level) { return niceRound(u.base * Math.exp(u.g * level)); }
 
 // ---------- rockets ----------
 const ROCKETS = [
@@ -181,6 +221,30 @@ const ROCKETS = [
   { id:'singularitaet', name:'Singularität', cost:760000, req:12, blurb:'Das Ende der Raketenwissenschaft. Alles, nur mehr.',
     thrust:2.05, fuel:3.25, drag:0.75, handling:1.5, lift:1.5, magnet:1.6, coin:1.6, armor:3, turbo:2, can:2,
     look:{ body:'#0b0b14', accent:'#ffffff', trim:'#b48cff', nose:'ogive', fins:'wing', len:1.42, w:1.02, boosters:2, stripes:1, windows:1, flame:'void' } },
+  { id:'ionenwind', name:'Ionenwind', cost:1.9e6, req:13, blurb:'Ein Ionentriebwerk: sparsam wie keine Rakete zuvor.',
+    thrust:2.15, fuel:3.6, drag:0.74, handling:1.4, lift:1, magnet:1.4, coin:1.6, armor:2, turbo:2, can:1.8,
+    look:{ body:'#e8f1ff', accent:'#2f7bff', trim:'#9fd2ff', nose:'cone', fins:'grid', len:1.38, w:.95, boosters:0, stripes:2, windows:2, flame:'cyan' } },
+  { id:'sonnensegel', name:'Sonnensegel', cost:6.4e6, req:14, blurb:'Segelt auf dem Licht der Sonne und gleitet weit.',
+    thrust:2.25, fuel:3.8, drag:0.7, handling:1.6, lift:2.2, magnet:1.5, coin:1.7, armor:2, turbo:2, can:1.8,
+    look:{ body:'#fff6dc', accent:'#f2a900', trim:'#ffffff', nose:'ogive', fins:'wing', len:1.4, w:.9, boosters:0, stripes:1, windows:1, flame:'gold' } },
+  { id:'kometenjaeger', name:'Kometenjäger', cost:7.9e6, req:15, blurb:'Dicker Eisschild und ein Magnet für Kometenstaub.',
+    thrust:2.35, fuel:4.0, drag:0.68, handling:1.5, lift:1, magnet:1.9, coin:1.8, armor:4, turbo:2, can:2.0,
+    look:{ body:'#cfe9f3', accent:'#1b5f7a', trim:'#ffffff', nose:'blunt', fins:'delta', len:1.36, w:1.1, boosters:2, stripes:3, windows:1, flame:'white' } },
+  { id:'fusionsfackel', name:'Fusionsfackel', cost:3.8e7, req:16, blurb:'Ein kleiner Stern im Heck: Kernfusion als Antrieb.',
+    thrust:2.5, fuel:4.2, drag:0.66, handling:1.5, lift:1, magnet:1.6, coin:1.9, armor:3, turbo:3, can:2.0,
+    look:{ body:'#2a1c14', accent:'#ff7a1a', trim:'#ffd38a', nose:'ogive', fins:'swept', len:1.45, w:1.05, boosters:2, stripes:2, windows:1, flame:'red' } },
+  { id:'pulsar', name:'Pulsar', cost:1.6e8, req:17, blurb:'Blitzt im Takt und zündet vier Turbos pro Flug.',
+    thrust:2.65, fuel:4.4, drag:0.64, handling:1.7, lift:1, magnet:1.8, coin:2, armor:3, turbo:4, can:2.0,
+    look:{ body:'#101a3a', accent:'#7df9ff', trim:'#ffffff', nose:'cone', fins:'grid', len:1.42, w:1, boosters:0, stripes:3, windows:2, flame:'cyan' } },
+  { id:'sternenwanderer', name:'Sternenwanderer', cost:1e9, req:18, blurb:'Holt aus jedem Treibstoffkanister fast das Zweieinhalbfache heraus.',
+    thrust:2.8, fuel:4.6, drag:0.62, handling:1.7, lift:1.5, magnet:2, coin:2.2, armor:3, turbo:4, can:2.4,
+    look:{ body:'#efe8ff', accent:'#7a4dff', trim:'#ffcf4a', nose:'ogive', fins:'wing', len:1.48, w:.98, boosters:2, stripes:2, windows:2, flame:'pink' } },
+  { id:'antares', name:'Antares', cost:5.7e9, req:19, blurb:'Antimaterie im Tank. Mehr Schub geht kaum.',
+    thrust:3.0, fuel:4.8, drag:0.6, handling:1.8, lift:1, magnet:2.1, coin:2.4, armor:4, turbo:4, can:2.2,
+    look:{ body:'#1a0508', accent:'#ff2448', trim:'#ffb0bf', nose:'ogive', fins:'swept', len:1.52, w:1.04, boosters:2, stripes:2, windows:1, flame:'red' } },
+  { id:'lichtbringer', name:'Lichtbringer', cost:4.7e10, req:20, blurb:'So nah an der Lichtgeschwindigkeit wie nichts sonst.',
+    thrust:3.25, fuel:5.0, drag:0.58, handling:2, lift:2, magnet:2.4, coin:2.7, armor:5, turbo:5, can:2.4,
+    look:{ body:'#ffffff', accent:'#ffd84a', trim:'#9ff3ff', nose:'ogive', fins:'wing', len:1.58, w:1.02, boosters:2, stripes:1, windows:2, flame:'white' } },
 ];
 const ROCKET_BY_ID = Object.fromEntries(ROCKETS.map(r => [r.id, r]));
 
@@ -201,11 +265,22 @@ const MISSIONS = [
   { id:'ajup',  g:'Höhe', t:'alt', goal:6.3e11,   reward:80000,   text:'Vorbei am Jupiter: 630 Mio. km' },
   { id:'asat',  g:'Höhe', t:'alt', goal:1.28e12,  reward:140000,   text:'Vorbei am Saturn: 1,28 Mrd. km' },
   { id:'aedge', g:'Höhe', t:'alt', goal:1.8e13,   reward:360000,   text:'Die Heliopause durchbrechen' },
+  { id:'aoort', g:'Höhe', t:'alt', goal:3.0e14,   reward:1.6e6,   text:'In die Oortsche Wolke: 2.000 Astronomische Einheiten' },
+  { id:'aly1',  g:'Höhe', t:'alt', goal:LIGHTYEAR, reward:2e6,  text:'Ein ganzes Lichtjahr' },
+  { id:'aprox', g:'Höhe', t:'alt', goal:4.01e16,  reward:2e6,   text:'Bis Proxima Centauri: 4,24 Lichtjahre' },
+  { id:'awega', g:'Höhe', t:'alt', goal:2.37e17,  reward:9.4e6,   text:'Zur Wega: 25 Lichtjahre' },
+  { id:'aplej', g:'Höhe', t:'alt', goal:4.2e18,   reward:3.9e7,   text:'Zu den Plejaden: 444 Lichtjahre' },
+  { id:'aori',  g:'Höhe', t:'alt', goal:1.27e19,  reward:2.6e8,   text:'In den Orionnebel: 1.344 Lichtjahre' },
+  { id:'azen',  g:'Höhe', t:'alt', goal:2.46e20,  reward:1.4e9, text:'Zum Zentrum der Milchstraße: 26.000 Lichtjahre' },
+  { id:'aand',  g:'Höhe', t:'alt', goal:2.4e22,   reward:1.2e10,   text:'Ankunft in der Andromeda-Galaxie' },
   { id:'mach1', g:'Tempo', t:'speed', goal:343,    reward:450,   text:'Schallmauer durchbrechen: Mach 1' },
   { id:'mach5', g:'Tempo', t:'speed', goal:1715,   reward:3200,  text:'Hyperschall: Mach 5' },
   { id:'v79',   g:'Tempo', t:'speed', goal:7900,   reward:22000, text:'Erste kosmische Geschwindigkeit: 7,9 km/s' },
   { id:'v112',  g:'Tempo', t:'speed', goal:11200,  reward:22000, text:'Fluchtgeschwindigkeit: 11,2 km/s' },
   { id:'v192',  g:'Tempo', t:'speed', goal:192000, reward:360000,   text:'Schneller als die Parker-Sonde: 192 km/s' },
+  { id:'c01',   g:'Tempo', t:'speed', goal:0.1 * LIGHTSPEED,  reward:9.4e6, text:'Ein Zehntel der Lichtgeschwindigkeit' },
+  { id:'c05',   g:'Tempo', t:'speed', goal:0.5 * LIGHTSPEED,  reward:2.6e8, text:'Halbe Lichtgeschwindigkeit' },
+  { id:'c09',   g:'Tempo', t:'speed', goal:0.9 * LIGHTSPEED,  reward:1.2e10, text:'90 % der Lichtgeschwindigkeit' },
   { id:'c100',  g:'Beute', t:'runCoins', goal:100,   reward:450, text:'100 Münzen in einem Flug' },
   { id:'c1k',   g:'Beute', t:'runCoins', goal:1000,  reward:3200, text:'1.000 Münzen in einem Flug' },
   { id:'c5k',   g:'Beute', t:'runCoins', goal:5000,  reward:5600, text:'5.000 Münzen in einem Flug' },
@@ -213,6 +288,8 @@ const MISSIONS = [
   { id:'c100k', g:'Beute', t:'runCoins', goal:1e5,   reward:140000, text:'100.000 Münzen in einem Flug' },
   { id:'c500k', g:'Beute', t:'runCoins', goal:5e5,   reward:710000, text:'500.000 Münzen in einem Flug' },
   { id:'c2m',   g:'Beute', t:'runCoins', goal:2e6,   reward:1.5e6, text:'2 Mio. Münzen in einem Flug' },
+  { id:'c50m',  g:'Beute', t:'runCoins', goal:5e7,   reward:3.9e7, text:'50 Mio. Münzen in einem Flug' },
+  { id:'c1b',   g:'Beute', t:'runCoins', goal:1e9,   reward:1.4e9, text:'1 Mrd. Münzen in einem Flug' },
   { id:'gem10', g:'Beute', t:'gems', goal:10,  reward:1800,  text:'10 Edelsteine finden' },
   { id:'gem100',g:'Beute', t:'gems', goal:100, reward:140000,   text:'100 Edelsteine finden' },
   { id:'cans5', g:'Sammeln', t:'cans', goal:5,    reward:120,   text:'5 Treibstoffkanister einsammeln' },
@@ -225,22 +302,25 @@ const MISSIONS = [
   { id:'f10',   g:'Pilot', t:'flights', goal:10,  reward:230,   text:'10 Flüge absolvieren' },
   { id:'f60',   g:'Pilot', t:'flights', goal:60,  reward:5600,  text:'60 Flüge absolvieren' },
   { id:'f200',  g:'Pilot', t:'flights', goal:200, reward:80000,   text:'200 Flüge absolvieren' },
-  { id:'nob60', g:'Pilot', t:'noBoost', goal:60,  reward:120,   text:'Nur mit der Schleuder: 60 m ohne Schub' },
-  { id:'nob500',g:'Pilot', t:'noBoost', goal:500, reward:20000, text:'Schleuder-Profi: 500 m ohne Schub' },
+  { id:'f400',  g:'Pilot', t:'flights', goal:400, reward:2.6e8,   text:'400 Flüge absolvieren' },
+  { id:'nob60', g:'Pilot', t:'noBoost', goal:60,  reward:120,   text:'Nur mit den Startboostern: 60 m ohne Triebwerk' },
+  { id:'nob500',g:'Pilot', t:'noBoost', goal:500, reward:20000, text:'Rampen-Profi: 500 m ohne Triebwerk' },
   { id:'sh10',  g:'Pilot', t:'shieldHits', goal:10, reward:25000, text:'Dein Schild wehrt 10 Treffer ab' },
   { id:'tur25', g:'Pilot', t:'turbos', goal:25, reward:22000, text:'25-mal den Turbo zünden' },
   { id:'bnc3',  g:'Pilot', t:'runBounces', goal:3, reward:60000, text:'3-mal in einem Flug abprallen' },
   { id:'rk2',   g:'Sammlung', t:'rockets', goal:2,  reward:120,   text:'Eine zweite Rakete kaufen' },
   { id:'rk6',   g:'Sammlung', t:'rockets', goal:6,  reward:5600, text:'Sechs Raketen besitzen' },
-  { id:'rk12',  g:'Sammlung', t:'rockets', goal:12, reward:500000,  text:'Alle zwölf Raketen besitzen' },
+  { id:'rk12',  g:'Sammlung', t:'rockets', goal:12, reward:500000,  text:'Zwölf Raketen besitzen' },
+  { id:'rk20',  g:'Sammlung', t:'rockets', goal:20, reward:1.2e10,  text:'Alle zwanzig Raketen besitzen' },
   { id:'max1',  g:'Sammlung', t:'maxed', goal:1, reward:5600, text:'Ein Upgrade auf Höchststufe' },
   { id:'max7',  g:'Sammlung', t:'maxed', goal:7, reward:400000,   text:'Sieben Upgrades auf Höchststufe' },
+  { id:'max14', g:'Sammlung', t:'maxed', goal:14, reward:1.2e10,   text:'Alle Upgrades auf Höchststufe' },
 ];
 
 // ---------- save ----------
 function defaultSave() {
   return {
-    v: 1, coins: 0, up: {}, rockets: ['funke'], rocket: 'funke', claimed: {}, seen: {}, bestZone: 0, won: false,
+    v: 2, coins: 0, up: {}, rockets: ['funke'], rocket: 'funke', claimed: {}, seen: {}, bestZone: 0, won: false,
     settings: { sound: true },
     stats: { flights:0, bestH:0, bestA:0, bestV:0, bestRunCoins:0, bestRunRings:0, bestNoBoost:0, bestRunBounces:0,
              earned:0, coinsPicked:0, gems:0, rings:0, cans:0, balloons:0, shieldHits:0, turbos:0, hits:0, playTime:0 },
@@ -261,6 +341,8 @@ function normalizeSave(s) {
   out.seen = Object.assign({}, s.seen || {});
   if (!Number.isFinite(out.coins) || out.coins < 0) out.coins = 0;
   out.bestZone = clamp(out.bestZone | 0, 0, ZONES.length - 1);
+  // version 1 ended at the Heliopause; the goal is now Andromeda, so that win does not count any more
+  if (!(s.v >= 2)) { out.won = false; out.v = 2; }
   return out;
 }
 
@@ -361,19 +443,36 @@ function fmtAltParts(A) {
   if (Math.round(km) < 1e6) return [deNum(km), 'km'];
   const mio = km / 1e6, md = mio < 10 ? 2 : 1;
   if (Math.round(mio * 10 ** md) / 10 ** md < 1000) return [deNum(mio, md), 'Mio. km'];
-  const mrd = km / 1e9;
-  return [deNum(mrd, mrd < 10 ? 2 : 1), 'Mrd. km'];
+  const mrd = km / 1e9, rd = mrd < 10 ? 2 : mrd < 100 ? 1 : 0;
+  if (Math.round(mrd * 10 ** rd) / 10 ** rd < 1000) return [deNum(mrd, rd), 'Mrd. km'];
+  // from about a tenth of a light-year on: light-years
+  const ly = A / LIGHTYEAR;
+  if (ly < 1e6) { const d = ly < 10 ? 2 : ly < 100 ? 1 : 0; return [deNum(ly, d), 'Lichtjahre']; }
+  const mly = ly / 1e6;
+  return [deNum(mly, mly < 10 ? 2 : 1), 'Mio. Lichtjahre'];
 }
 function fmtAlt(A) { const p = fmtAltParts(A); return p[0] + ' ' + p[1]; }
-function fmtSpeed(ms) {
+// [value, unit]: km/h, then km/s, then percent of light speed
+function fmtSpeedParts(ms) {
   ms = Math.max(0, ms);
-  if (ms < 2800) return deNum(ms * 3.6) + ' km/h';
-  const kms = ms / 1000;
-  return deNum(kms, Math.round(kms * 10) / 10 < 100 ? 1 : 0) + ' km/s';
+  if (ms < 2800) return [deNum(ms * 3.6), 'km/h'];
+  if (ms < 0.05 * LIGHTSPEED) { const kms = ms / 1000; return [deNum(kms, Math.round(kms * 10) / 10 < 100 ? 1 : 0), 'km/s']; }
+  const pct = Math.min(99.9, ms / LIGHTSPEED * 100);
+  return [deNum(pct, pct < 99 ? 0 : 1), '% Licht'];
+}
+function fmtSpeed(ms) { const p = fmtSpeedParts(ms); return p[1] === '% Licht' ? p[0] + ' % Lichtgeschw.' : p[0] + ' ' + p[1]; }
+// time-lapse factor as "×20.000" or "×5 Mrd."
+function fmtLapse(x) {
+  const e = Math.pow(10, Math.floor(Math.log10(Math.max(1, x))));
+  const r = Math.round(x / e) * e;
+  if (r < 1e6) return '×' + deNum(r);
+  const [v, u] = r >= 1e15 ? [1e15, 'Brd.'] : r >= 1e12 ? [1e12, 'Bio.'] : r >= 1e9 ? [1e9, 'Mrd.'] : [1e6, 'Mio.'];
+  return '×' + deNum(Math.round(r / v)) + ' ' + u;
 }
 
 if (typeof module !== 'undefined') {
   module.exports = { ZONES, ZH, zoneFrac, GOAL_H, SPACE_H, HEIGHT_BONUS, PHYS, launchSpeed, clamp, lerp, smooth, zoneIndexAt,
+    LIGHTYEAR, LIGHTSPEED, SPEED_STOPS, fuelScarcity, displaySpeed, timeLapseAt, fmtSpeedParts, fmtLapse,
     altitudeAt, speedScaleAt, coinValueAt, gravity, airDensity, windAt, SKY_STOPS, cloudDensity, UPGRADES, UPG, niceRound, upgradeCost, ROCKETS, ROCKET_BY_ID,
     MISSIONS, defaultSave, normalizeSave, computeStats, angDiff, stepRocket, deNum, fmtNum, fmtAltParts, fmtAlt, fmtSpeed };
 }

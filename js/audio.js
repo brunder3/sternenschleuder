@@ -68,7 +68,8 @@ const Sfx = (() => {
     mission() { [0, 4, 7, 12].forEach((s, i) => tone(523 * Math.pow(2, s / 12), 0.28, 'triangle', 0.12, null, i * 0.09)); },
     zone() { [0, 7, 12, 19].forEach((s, i) => tone(392 * Math.pow(2, s / 12), 1.1, 'sine', 0.06, null, i * 0.07)); },
     win() { [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => tone(392 * Math.pow(2, s / 12), 0.5, 'triangle', 0.1, null, i * 0.11)); },
-    catapult() { tone(150, 0.6, 'triangle', 0.24, 70); noise(0.35, 0.3, 900, 1, 'bandpass', 200); tone(60, 0.5, 'sine', 0.25, 40); },
+    // engine ignition on the pad: a deep roar with a crackling top
+    ignite() { noise(1.6, 0.55, 380, 0.8, 'lowpass', 90); noise(0.6, 0.18, 2600, 1, 'bandpass', 900); tone(55, 1.2, 'sawtooth', 0.12, 38); tone(110, 0.5, 'triangle', 0.15, 60); },
     tick(p) { tone(300 + p * 500, 0.03, 'square', 0.02); },
     perfect() { [0, 7, 12].forEach((s, i) => tone(784 * Math.pow(2, s / 12), 0.18, 'triangle', 0.1, null, i * 0.05)); },
     click() { tone(900, 0.05, 'square', 0.035); },

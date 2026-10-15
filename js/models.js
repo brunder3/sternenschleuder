@@ -24,6 +24,13 @@ const Models = (() => {
     if (!matCache.has(key)) matCache.set(key, new T.MeshStandardMaterial(Object.assign({ color, roughness: rough, metalness: metal }, extra || {})));
     return matCache.get(key);
   }
+  // car-like paint: a glossy clear coat over the colour reflects the sky
+  const paintCache = new Map();
+  function paint(color, rough = 0.4, metal = 0.1) {
+    const key = color + '|' + rough + '|' + metal;
+    if (!paintCache.has(key)) paintCache.set(key, new T.MeshPhysicalMaterial({ color, roughness: rough, metalness: metal, clearcoat: 0.85, clearcoatRoughness: 0.12 }));
+    return paintCache.get(key);
+  }
   function glowMat(color, opacity = 1) {
     return new T.SpriteMaterial({ map: TEX.glow, color, transparent: true, opacity, blending: T.AdditiveBlending, depthWrite: false });
   }
@@ -77,18 +84,64 @@ const Models = (() => {
     }
     return c;
   }
+  // cumulus: many soft puffs, sunlit tops, grey flat bases
   function cloudCanvas(seed) {
-    const S = 256, c = makeCanvas(S, S), g = c.getContext('2d'), r = mulberry(seed * 97 + 3);
-    for (let i = 0; i < 14; i++) {
-      const a = r() * TAU, d = r() * 62, x = S / 2 + Math.cos(a) * d * 1.2, y = S / 2 + Math.sin(a) * d * 0.55, rad = 38 + r() * 46;
-      const gr = g.createRadialGradient(x, y - rad * 0.2, 1, x, y, rad);
-      gr.addColorStop(0, 'rgba(255,255,255,.95)'); gr.addColorStop(0.55, 'rgba(246,250,255,.75)'); gr.addColorStop(1, 'rgba(225,235,250,0)');
+    const S = 512, c = makeCanvas(S, S), g = c.getContext('2d'), r = mulberry(seed * 97 + 3);
+    const puffs = [];
+    for (let i = 0; i < 46; i++) {
+      const a = r() * TAU, d = Math.pow(r(), 0.6) * 130, x = S / 2 + Math.cos(a) * d * 1.25, y = S / 2 + 20 + Math.sin(a) * d * 0.5 - Math.max(0, 70 - d) * 0.9 * r();
+      puffs.push([x, Math.min(y, S / 2 + 70), 26 + r() * 52]);
+    }
+    puffs.sort((p, q) => q[1] - p[1]);   // back (low) puffs first
+    for (const [x, y, rad] of puffs) {
+      const gr = g.createRadialGradient(x - rad * 0.25, y - rad * 0.35, rad * 0.05, x, y, rad);
+      gr.addColorStop(0, 'rgba(255,255,255,0.96)'); gr.addColorStop(0.5, 'rgba(242,246,252,0.82)'); gr.addColorStop(0.85, 'rgba(214,224,238,0.35)'); gr.addColorStop(1, 'rgba(200,214,232,0)');
       g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, TAU); g.fill();
     }
+    // flat, shadowed base
     g.globalCompositeOperation = 'source-atop';
-    const sh = g.createLinearGradient(0, S * 0.35, 0, S * 0.85);
-    sh.addColorStop(0, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(140,160,200,.5)');
+    const sh = g.createLinearGradient(0, S * 0.42, 0, S * 0.66);
+    sh.addColorStop(0, 'rgba(120,135,160,0)'); sh.addColorStop(1, 'rgba(118,132,158,.62)');
     g.fillStyle = sh; g.fillRect(0, 0, S, S);
+    g.globalCompositeOperation = 'destination-out';
+    const cut = g.createLinearGradient(0, S * 0.64, 0, S * 0.72);
+    cut.addColorStop(0, 'rgba(0,0,0,0)'); cut.addColorStop(1, 'rgba(0,0,0,1)');
+    g.fillStyle = cut; g.fillRect(0, S * 0.64, S, S * 0.36);
+    g.globalCompositeOperation = 'source-over';
+    return c;
+  }
+  // fine grain for the ground: speckles and blotches around a light grey, multiplied with the vertex colours
+  function groundCanvas() {
+    const S = 256, c = makeCanvas(S, S), g = c.getContext('2d'), r = mulberry(77);
+    g.fillStyle = '#ececec'; g.fillRect(0, 0, S, S);
+    for (let i = 0; i < 260; i++) {
+      const x = r() * S, y = r() * S, rad = 4 + r() * 22, v = 200 + r() * 55 | 0;
+      const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+      gr.addColorStop(0, `rgba(${v},${v},${v},.5)`); gr.addColorStop(1, `rgba(${v},${v},${v},0)`);
+      for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) { g.fillStyle = gr; g.save(); g.translate(dx, dy); g.fillRect(x - rad, y - rad, rad * 2, rad * 2); g.restore(); }
+    }
+    const img = g.getImageData(0, 0, S, S), d = img.data;
+    for (let i = 0; i < d.length; i += 4) { const n = (r() - 0.5) * 34; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+  // water ripples: a tiling height field turned into a normal map
+  function waterNormalCanvas() {
+    const S = 256, c = makeCanvas(S, S), g = c.getContext('2d'), r = mulberry(5);
+    const waves = Array.from({ length: 14 }, () => ({ kx: Math.round((r() - 0.5) * 12), ky: Math.round((r() - 0.5) * 12) || 1, ph: r() * TAU, a: 0.4 + r() }));
+    const hgt = new Float32Array(S * S);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      let h = 0;
+      for (const w of waves) h += w.a * Math.sin((w.kx * x + w.ky * y) / S * TAU + w.ph) / Math.hypot(w.kx, w.ky);
+      hgt[y * S + x] = h;
+    }
+    const img = g.createImageData(S, S), d = img.data;
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const hx = hgt[y * S + (x + 1) % S] - hgt[y * S + (x + S - 1) % S], hy = hgt[((y + 1) % S) * S + x] - hgt[((y + S - 1) % S) * S + x];
+      const nx = -hx * 3, ny = -hy * 3, nz = 1, l = Math.hypot(nx, ny, nz), k = (y * S + x) * 4;
+      d[k] = (nx / l * 0.5 + 0.5) * 255; d[k + 1] = (ny / l * 0.5 + 0.5) * 255; d[k + 2] = (nz / l * 0.5 + 0.5) * 255; d[k + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
     return c;
   }
   function latticeCanvas() {
@@ -228,6 +281,24 @@ const Models = (() => {
     }
     return c;
   }
+  // emission nebula: soft pink, teal and gold clouds with a few young stars
+  function nebulaCanvas() {
+    const c = makeCanvas(512, 512), g = c.getContext('2d'), r = mulberry(1344);
+    const cols = [[255, 110, 180], [90, 220, 230], [255, 190, 120], [170, 110, 255]];
+    for (let i = 0; i < 60; i++) {
+      const a = r() * TAU, d = Math.pow(r(), 0.7) * 170, x = 256 + Math.cos(a) * d, y = 256 + Math.sin(a) * d * 0.75, rad = 40 + r() * 90, col = cols[i % 4];
+      const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+      gr.addColorStop(0, `rgba(${col},${0.10 + r() * 0.12})`); gr.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+    }
+    for (let i = 0; i < 120; i++) { g.fillStyle = `rgba(255,255,255,${0.3 + r() * 0.7})`; const x = 256 + (r() - 0.5) * 300, y = 256 + (r() - 0.5) * 220; g.fillRect(x, y, r() < 0.1 ? 2 : 1, r() < 0.1 ? 2 : 1); }
+    g.globalCompositeOperation = 'destination-in';
+    const m = g.createRadialGradient(256, 256, 120, 256, 256, 256);
+    m.addColorStop(0, 'rgba(0,0,0,1)'); m.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = m; g.fillRect(0, 0, 512, 512);
+    g.globalCompositeOperation = 'source-over';
+    return c;
+  }
   function chevronCanvas() {
     const c = makeCanvas(128, 128), g = c.getContext('2d');
     g.strokeStyle = 'rgba(255,255,255,.95)'; g.lineWidth = 12; g.lineCap = 'round'; g.lineJoin = 'round';
@@ -239,6 +310,8 @@ const Models = (() => {
     TEX.dot = canvasTex(radial(64, [[0, 'rgba(255,255,255,1)'], [0.45, 'rgba(255,255,255,.55)'], [1, 'rgba(255,255,255,0)']]));
     TEX.grass = canvasTex(grassCanvas(), 1);
     TEX.clouds = [0, 1, 2, 3, 4].map(i => canvasTex(cloudCanvas(i)));
+    TEX.ground = canvasTex(groundCanvas(), 1); TEX.ground.anisotropy = 8;
+    TEX.waterNormal = canvasTex(waterNormalCanvas(), 1); TEX.waterNormal.colorSpace = T.NoColorSpace;
     TEX.lattice = canvasTex(latticeCanvas()); TEX.lattice.wrapT = T.RepeatWrapping;
     TEX.hazard = canvasTex(hazardCanvas()); TEX.hazard.wrapS = T.RepeatWrapping;
     TEX.windows = canvasTex(windowsCanvas());
@@ -247,6 +320,7 @@ const Models = (() => {
     TEX.ring = canvasTex(ringCanvas());
     TEX.galaxy = canvasTex(galaxyCanvas());
     TEX.spiral = canvasTex(spiralCanvas());
+    TEX.nebula = canvasTex(nebulaCanvas());
     TEX.chevron = canvasTex(chevronCanvas());
     for (const p of ['moon', 'mars', 'jupiter', 'saturn', 'earth']) TEX[p] = canvasTex(planetCanvas(p));
   }
@@ -255,6 +329,7 @@ const Models = (() => {
   const FLAME_COLORS = {
     warm: [0xfffae0, 0xffbe46, 0xff5a1e], blue: [0xe6faff, 0x6ed2ff, 0x286eff], water: [0xffffff, 0xbeebff, 0x78bef0],
     gold: [0xfffce6, 0xffd764, 0xf08c1e], violet: [0xfff0ff, 0xf078ff, 0x823cff], green: [0xf0fff5, 0x64ffbe, 0x14aa8c], void: [0xffffff, 0xc8a0ff, 0x5a28c8],
+    cyan: [0xf0ffff, 0x6ff6ff, 0x1a9cff], white: [0xffffff, 0xe8f4ff, 0x9cc4ff], red: [0xfff0e0, 0xff6a3a, 0xc4101e], pink: [0xfff0fa, 0xff8ad8, 0xc23c9c],
   };
   function lathe(points, segs) { return new T.LatheGeometry(points.map(p => new T.Vector2(Math.max(0.0001, p[0]), p[1])), segs || 32); }
   function noseProfile(kind, R, y0, len, n = 14) {
@@ -286,7 +361,7 @@ const Models = (() => {
     const L = 7.2 * look.len, R = 1.05 * look.w;
     const noseLen = look.nose === 'blunt' ? L * 0.17 : look.nose === 'cone' ? L * 0.3 : L * 0.34;
     const y0 = -L / 2, yB = L / 2 - noseLen;
-    const bodyMat = std(look.body, 0.42, 0.15), accMat = std(look.accent, 0.38, 0.3), trimMat = std(look.trim, 0.35, 0.45);
+    const bodyMat = paint(look.body, 0.45, 0.1), accMat = paint(look.accent, 0.4, 0.2), trimMat = paint(look.trim, 0.3, 0.6);
     const darkMetal = std('#3a3f4a', 0.35, 0.8, { side: T.DoubleSide });
     // body and nose
     inner.add(new T.Mesh(lathe([[R * 0.78, y0], [R * 0.96, y0 + L * 0.025], [R, y0 + L * 0.06], [R, yB]]), bodyMat));
@@ -395,7 +470,10 @@ const Models = (() => {
   }
 
   // ---------- launch site ----------
-  function catapult() {
+  // launch pad: concrete deck with a flame trench, a service tower and a tilting launch rail (the erector)
+  // that holds the rocket at the launch angle. The rail pivots at (0, PAD_PIVOT) and lies behind the rocket (z < 0).
+  const PAD_PIVOT = 3.2;
+  function launchPad() {
     const g = new T.Group();
     const concrete = std('#a9afba', 0.85, 0.02);
     const base = new T.Mesh(new T.BoxGeometry(34, 1.6, 26), concrete);
@@ -408,44 +486,70 @@ const Models = (() => {
       const s = new T.Mesh(new T.BoxGeometry(w, 0.9, d), hz);
       s.position.set(x, 1.0, z); s.rotation.y = ry; g.add(s);
     }
-    // painted launch arrow
-    const arrow = new T.Shape();
-    arrow.moveTo(-4, -1.2); arrow.lineTo(2, -1.2); arrow.lineTo(2, -3); arrow.lineTo(6, 0); arrow.lineTo(2, 3); arrow.lineTo(2, 1.2); arrow.lineTo(-4, 1.2); arrow.closePath();
-    const ar = new T.Mesh(new T.ShapeGeometry(arrow), std('#ffffff', 0.9, 0, { transparent: true, opacity: 0.7 }));
-    ar.rotation.x = -Math.PI / 2; ar.position.set(8, 1.69, 0); g.add(ar);
-    // lattice towers left and right of the lane
-    const towerMat = new T.MeshStandardMaterial({ map: TEX.lattice, transparent: true, alphaTest: 0.35, side: T.DoubleSide, metalness: 0.5, roughness: 0.5 });
-    const capMat = std('#e2402f', 0.5, 0.2);
-    const lightMat = new T.MeshStandardMaterial({ color: 0xff4a3a, emissive: 0xff2010, emissiveIntensity: 2 });
-    const tops = [];
-    for (const z of [-7.5, 7.5]) {
-      const tw = new T.Mesh(new T.BoxGeometry(1.8, 16, 1.8), towerMat);
-      tw.position.set(0, 9.6, z); g.add(tw);
-      const cap = new T.Mesh(new T.BoxGeometry(2.4, 0.9, 2.4), capMat);
-      cap.position.set(0, 18, z); g.add(cap);
-      const lamp = new T.Mesh(new T.SphereGeometry(0.35, 12, 8), lightMat);
-      lamp.position.set(0, 18.7, z); g.add(lamp);
-      tops.push(new T.Vector3(0, 17.4, z * 0.92));
+    // flame trench with a soot-dark deflector and a hazard rim
+    const trench = new T.Mesh(new T.BoxGeometry(9, 0.12, 7), std('#2b2d33', 0.95, 0.1));
+    trench.position.set(1.5, 1.66, 0); g.add(trench);
+    const soot = new T.Mesh(new T.BoxGeometry(6, 0.13, 4.6), std('#15161a', 1, 0));
+    soot.position.set(2.2, 1.67, 0); g.add(soot);
+    for (const [w, d, x, z] of [[9.4, 0.4, 1.5, 3.7], [9.4, 0.4, 1.5, -3.7], [0.4, 7.4, 6.2, 0], [0.4, 7.4, -3.2, 0]]) {
+      const r = new T.Mesh(new T.BoxGeometry(w, 0.3, d), hz); r.position.set(x, 1.75, z); g.add(r);
     }
-    // elastic band: two thick cords to the pouch
-    const bandMat = std('#3a2418', 0.9, 0);
-    const cordGeo = new T.CylinderGeometry(0.22, 0.22, 1, 8);
-    const cords = [new T.Mesh(cordGeo, bandMat), new T.Mesh(cordGeo, bandMat)];
-    cords.forEach(c => g.add(c));
-    const pouch = new T.Mesh(new T.BoxGeometry(0.9, 2.2, 2.6), std('#4a2f1f', 0.9, 0));
-    g.add(pouch);
-    const pv = new T.Vector3();
+    const metal = std('#8a93a3', 0.45, 0.6), white = std('#e9edf3', 0.6, 0.15), red = std('#e2402f', 0.5, 0.2);
+    const latMat = new T.MeshStandardMaterial({ map: TEX.lattice, transparent: true, alphaTest: 0.35, side: T.DoubleSide, metalness: 0.5, roughness: 0.5 });
+    const lightMat = new T.MeshStandardMaterial({ color: 0xff4a3a, emissive: 0xff2010, emissiveIntensity: 2 });
+    // pivot blocks the rail hinges on
+    for (const z of [-3.4, -1.2]) {
+      const blk = new T.Mesh(new T.BoxGeometry(2.2, PAD_PIVOT - 1.2, 0.8), metal);
+      blk.position.set(0, 1.6 + (PAD_PIVOT - 1.6) / 2, z); g.add(blk);
+    }
+    const axle = new T.Mesh(new T.CylinderGeometry(0.35, 0.35, 3, 12), white);
+    axle.rotation.x = Math.PI / 2; axle.position.set(0, PAD_PIVOT, -2.3); g.add(axle);
+    // the launch rail: a lattice beam with clamp arms, rotated by setRail()
+    const rail = new T.Group(); rail.position.set(0, PAD_PIVOT, 0); g.add(rail);
+    const beam = new T.Mesh(new T.BoxGeometry(17, 1.3, 1.3), latMat); beam.position.set(8.2, 0, -2.6); rail.add(beam);
+    const spine = new T.Mesh(new T.BoxGeometry(17, 0.3, 0.3), red); spine.position.set(8.2, 0.75, -2.6); rail.add(spine);
+    const clamps = [];
+    for (const x of [3, 8, 13]) {
+      const hinge = new T.Group(); hinge.position.set(x, 0, -2); rail.add(hinge);
+      const arm = new T.Mesh(new T.BoxGeometry(0.5, 0.5, 1.6), white); arm.position.z = 0.8; hinge.add(arm);
+      const pad = new T.Mesh(new T.BoxGeometry(0.7, 0.9, 0.25), red); pad.position.z = 1.6; hinge.add(pad);
+      clamps.push(hinge);
+    }
+    const foot = new T.Mesh(new T.CylinderGeometry(1.2, 1.4, 0.6, 16), metal);
+    foot.rotation.z = Math.PI / 2; foot.position.set(-0.2, 0, 0); rail.add(foot);
+    // service tower with a swing arm and a warning light on top
+    const tower = new T.Group(); tower.position.set(-6, 1.6, -8.5); g.add(tower);
+    const tw = new T.Mesh(new T.BoxGeometry(3.2, 26, 3.2), latMat); tw.position.y = 13; tower.add(tw);
+    for (let y = 4; y < 26; y += 5.5) { const deck = new T.Mesh(new T.BoxGeometry(3.8, 0.3, 3.8), metal); deck.position.y = y; tower.add(deck); }
+    const cap = new T.Mesh(new T.BoxGeometry(3.8, 1.2, 3.8), red); cap.position.y = 26.4; tower.add(cap);
+    const lamp = new T.Mesh(new T.SphereGeometry(0.45, 12, 8), lightMat); lamp.position.y = 27.4; tower.add(lamp);
+    const antenna = new T.Mesh(new T.CylinderGeometry(0.12, 0.12, 5, 6), metal); antenna.position.y = 29.5; tower.add(antenna);
+    const swing = new T.Group(); swing.position.set(1.6, 15, 0); tower.add(swing);
+    const sarm = new T.Mesh(new T.BoxGeometry(6, 0.8, 1), latMat); sarm.position.x = 3; swing.add(sarm);
+    const hose = new T.Mesh(new T.CylinderGeometry(0.18, 0.18, 6, 8), std('#2a2d33', 0.8, 0)); hose.rotation.z = Math.PI / 2; hose.position.set(3, -0.6, 0); swing.add(hose);
+    // water tower for the sound-suppression deluge
+    const wt = new T.Group(); wt.position.set(13, 1.6, -9); g.add(wt);
+    for (const [x, z] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) { const leg = new T.Mesh(new T.CylinderGeometry(0.2, 0.25, 12, 6), metal); leg.position.set(x, 6, z); wt.add(leg); }
+    const tank = new T.Mesh(new T.SphereGeometry(3.2, 20, 14), white); tank.position.y = 14; tank.scale.y = 0.8; wt.add(tank);
+    const band = new T.Mesh(new T.CylinderGeometry(3.25, 3.25, 0.7, 20, 1, true), red); band.position.y = 14; wt.add(band);
+    // floodlight masts at the corners
+    for (const [x, z] of [[15, 11], [15, -11], [-15, -11]]) {   // none on the camera side (x < 0, z > 0)
+      const pole = new T.Mesh(new T.CylinderGeometry(0.15, 0.2, 14, 6), metal); pole.position.set(x, 8.6, z); g.add(pole);
+      const head = new T.Mesh(new T.BoxGeometry(1.6, 0.8, 0.5), std('#fff6d8', 0.4, 0, { emissive: 0xfff2c0, emissiveIntensity: 0.6 }));
+      head.position.set(x, 15.8, z); head.lookAt(0, 6, 0); g.add(head);
+    }
+    const capMat = red;   // roof of the control hut
     g.userData = {
       lamp: lightMat,
-      // place the pouch (local coords) and stretch the band to it
-      setPouch(x, y, angle) {
-        pv.set(x, y, 0);
-        pouch.position.copy(pv); pouch.rotation.z = angle;
-        stretchBetween(cords[0], tops[0], pv);
-        stretchBetween(cords[1], tops[1], pv);
+      pivot: PAD_PIVOT,
+      // tilt the rail; open (0..1) swings the clamp arms and the tower arm away after ignition
+      setRail(angle, open) {
+        rail.rotation.z = angle;
+        for (const c of clamps) c.rotation.x = -open * 1.4;
+        swing.rotation.y = open * 1.3;
       },
     };
-    g.userData.setPouch(0, 15, 0.8);
+    g.userData.setRail(0.8, 0);
     // control hut
     const hut = new T.Group();
     const walls = new T.Mesh(new T.BoxGeometry(12, 6, 8), [std('#d9dde6', 0.8, 0), std('#d9dde6', 0.8, 0), std('#b5bcc9', 0.8, 0), std('#b5bcc9', 0.8, 0), new T.MeshStandardMaterial({ map: TEX.windows, roughness: 0.7 }), std('#d9dde6', 0.8, 0)]);
@@ -693,7 +797,7 @@ const Models = (() => {
 
   return {
     TEX, buildTextures, std, glowMat, additive, stretchBetween, mulberry, jitter, FLAME_COLORS,
-    rocket, catapult, treeParts, mountain, hill, shared, gem, fuelCan, boostRing,
+    rocket, launchPad, treeParts, mountain, hill, shared, gem, fuelCan, boostRing,
     bird, partyBalloons, weatherBalloon, ufo, drone, zeppelin, rock, meteor, satellite, debris, plasma, planet,
   };
 })();

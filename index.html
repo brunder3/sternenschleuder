@@ -132,6 +132,8 @@ button{font-family:inherit;color:inherit}
 .alt{font:400 clamp(34px,7vw,60px)/1 var(--display);color:var(--gold);font-variant-numeric:tabular-nums;text-shadow:0 3px 0 #8a4a06,0 0 22px rgba(0,0,0,.35)}
 .alt small{font-size:.45em;margin-left:6px}
 .zone{font-weight:700;font-size:12px;letter-spacing:.18em;text-transform:uppercase;text-shadow:0 1px 4px rgba(0,0,0,.85)}
+.lapse{font-weight:700;font-size:11px;letter-spacing:.12em;color:var(--fuel);text-shadow:0 1px 4px rgba(0,0,0,.85);min-height:1px}
+.lapse:empty{display:none}
 .gauge{position:absolute;left:max(14px,var(--sl));bottom:calc(14px + var(--sb));width:150px;height:150px}
 .gauge svg{width:100%;height:100%;overflow:visible}
 .gauge .gv{position:absolute;left:0;right:0;top:57%;text-align:center;font:400 22px/1 var(--display);font-variant-numeric:tabular-nums}
@@ -343,7 +345,7 @@ kbd{font-family:var(--ui);font-weight:700;font-size:12px;border:1px solid var(--
   </div>
 </div>
 
-<!-- catapult charge -->
+<!-- launch pad: ignition meter -->
 <div id="charge" class="layer" hidden>
   <div class="tl"><button class="icon-btn" id="btnBack" aria-label="Zurück zum Menü"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button></div>
   <div class="tr"><div class="pill"><i class="coin-ico"></i><span id="cCoins">0</span></div></div>
@@ -357,7 +359,7 @@ kbd{font-family:var(--ui);font-weight:700;font-size:12px;border:1px solid var(--
       <div class="meter-label">Perfekt</div>
       <div class="meter"><div class="grad"></div><div class="perfect" id="perfectZone"></div><div class="needle" id="needle"></div></div>
     </div>
-    <button class="btn primary big" id="btnLaunch">Tippen zum Abschuss</button>
+    <button class="btn primary big" id="btnLaunch">Tippen zum Zünden</button>
   </div>
 </div>
 
@@ -371,6 +373,7 @@ kbd{font-family:var(--ui);font-weight:700;font-size:12px;border:1px solid var(--
     </div>
     <div class="alt"><span id="hAlt">0</span><small id="hAltU">m</small></div>
     <div class="zone" id="hZone">Startwiese</div>
+    <div class="lapse" id="hLapse"></div>
   </div>
   <div class="tr"><div class="pill"><i class="coin-ico"></i><span id="hCoins">0</span></div></div>
   <div class="steer">
@@ -398,10 +401,10 @@ kbd{font-family:var(--ui);font-weight:700;font-size:12px;border:1px solid var(--
 <div id="title" class="overlay clear" hidden>
   <div class="title-wrap">
     <h1 class="logo">Sternen<span>schleuder</span></h1>
-    <p class="tagline">Spann die Schleuder, triff die perfekte Kraft und flieg geradeaus nach oben: durch die Wolken, ins All und bis an den Rand des Sonnensystems.</p>
+    <p class="tagline">Richte die Startrampe aus, zünde im perfekten Moment und flieg geradeaus nach oben: durch die Wolken, ins All, vorbei an fremden Sternen bis zur Andromeda-Galaxie.</p>
     <button class="btn primary big" id="btnPlay">Spielen</button>
     <div class="keys">
-      <div><b>Abschuss</b><kbd>Leertaste</kbd> oder Klick, wenn der Balken im Feld „Perfekt“ steht.</div>
+      <div><b>Zündung</b><kbd>Leertaste</kbd> oder Klick, wenn der Balken im Feld „Perfekt“ steht.</div>
       <div><b>Schub</b><kbd>Leertaste</kbd>, Klick oder Boost-Knopf gedrückt halten.</div>
       <div><b>Lenken</b><kbd>W</kbd>/<kbd>S</kbd> oder <kbd>↑</kbd>/<kbd>↓</kbd>, auf dem Handy die Pfeile links.</div>
     </div>
@@ -439,10 +442,11 @@ kbd{font-family:var(--ui);font-weight:700;font-size:12px;border:1px solid var(--
   <div class="sheet" style="width:min(100%,540px)">
     <div><div class="eyebrow">Steuerung</div><h2>So fliegst du</h2></div>
     <div class="keys">
-      <div><b>1 · Abschuss</b>Tippe auf „Tippen zum Fliegen“. Der Balken läuft hin und her. Tippe, wenn er im Feld „Perfekt“ steht. Mit <kbd>W</kbd>/<kbd>S</kbd> änderst du vorher den Winkel.</div>
+      <div><b>1 · Zündung</b>Tippe auf „Tippen zum Fliegen“. Die Rakete steht auf der Startrampe, der Balken läuft hin und her. Tippe, wenn er im Feld „Perfekt“ steht. Mit <kbd>W</kbd>/<kbd>S</kbd> kippst du vorher die Rampe.</div>
       <div><b>2 · Schub</b>Halte <kbd>Leertaste</kbd>, die Maustaste oder den Boost-Knopf. Der Knopf zeigt, wie viel Treibstoff noch da ist.</div>
       <div><b>3 · Lenken</b>Die Rakete fliegt immer geradeaus. <kbd>W</kbd>/<kbd>↑</kbd> hebt die Nase, <kbd>S</kbd>/<kbd>↓</kbd> senkt sie. Auf dem Handy: Pfeile links oder mit dem Finger hoch und runter ziehen.</div>
       <div><b>4 · Sammeln</b>Kanister füllen den Tank, Ringe geben Tempo, Münzen bringen Geld für Upgrades. <kbd>Shift</kbd> zündet den Turbo.</div>
+      <div><b>5 · Zeitraffer</b>Im All sind die Entfernungen riesig. Höhe und Tempo sind echt, die Zeit läuft im Zeitraffer. Der Faktor steht unter der Höhe.</div>
     </div>
     <button class="btn primary" id="btnHelpClose">Verstanden</button>
   </div>
@@ -450,9 +454,9 @@ kbd{font-family:var(--ui);font-weight:700;font-size:12px;border:1px solid var(--
 
 <div id="victory" class="overlay" hidden>
   <div class="sheet" style="width:min(100%,520px);text-align:center;justify-items:center">
-    <div class="eyebrow">18 Milliarden Kilometer</div>
-    <h2 style="font-size:clamp(28px,6vw,40px)">Du hast das Sonnensystem verlassen!</h2>
-    <p style="margin:0;line-height:1.5">Hinter der Heliopause endet der Sonnenwind. Von hier ist die Erde nur noch ein blassblauer Punkt. Glückwunsch, Raketenbauer!</p>
+    <div class="eyebrow">2,5 Millionen Lichtjahre</div>
+    <h2 style="font-size:clamp(28px,6vw,40px)">Willkommen in der Andromeda-Galaxie!</h2>
+    <p style="margin:0;line-height:1.5">Hinter dir liegt die ganze Milchstraße. Das Licht, das du von hier aus von der Erde siehst, ist älter als die Menschheit. Glückwunsch, Raketenbauer!</p>
     <div class="mini" id="victoryStats" style="width:100%"></div>
     <button class="btn primary big" id="btnVictory">Weiterfliegen</button>
   </div>
@@ -463,6 +467,7 @@ kbd{font-family:var(--ui);font-weight:700;font-size:12px;border:1px solid var(--
 <div class="nogl" id="nogl" hidden><div><h2 style="font-family:var(--display);font-weight:400">3D läuft hier nicht</h2><p>Dein Browser konnte WebGL nicht starten. Probier einen aktuellen Chrome, Edge, Firefox oder Safari.</p></div></div>
 
 <script src="vendor/three.min.js"></script>
+<script src="vendor/three-extras.min.js"></script>
 <script src="js/core.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/models.js"></script>
