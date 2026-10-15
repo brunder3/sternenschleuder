@@ -21,9 +21,9 @@ Der Weg ins All folgt der echten Atmosphäre:
 - Ab etwa 50 km versinkt das Land im blauen Dunst und geht in die gekrümmte Erdkugel mit ihrer Atmosphäre über.
 - Beim Durchbrechen der Schallmauer bildet sich ein Kondensationskegel um die Rakete. Im Vakuum weitet sich der Abgasstrahl auf, und die Machschen Knoten verschwinden.
 
-Wer aus dem All zurückfällt, erlebt den Wiedereintritt: Die Rakete stürzt mit 7,8 km/s in die Atmosphäre, umhüllt von Plasma, einer Funkenspur und einem leuchtenden Schweif. Die stärkste Hitze kommt bei 60 bis 70 km. Danach bremst die dichter werdende Luft sie ab.
+Fällt die Rakete schnell aus dem All zurück, glüht beim Durchqueren der oberen Atmosphäre (etwa 130 bis 25 km) die Luft vor ihr als Plasma. Funken und ein leuchtender Schweif ziehen hinter ihr her, und die Nase dreht sich in den Fahrtwind. Das ist reine Animation, der Flug selbst läuft ganz normal weiter.
 
-Die Kamera folgt der Rakete über einen gedämpften Versatz, fällt also auch bei hohem Tempo nicht zurück. Sie wackelt weich statt zu zittern und senkt den Blick im All, damit Horizont und Erde im Bild bleiben. Beim Wiedereintritt zeigt sie die Rakete schräg von der Seite.
+Die Kamera folgt der Rakete über einen gedämpften Versatz, fällt also auch bei hohem Tempo nicht zurück. Sie wackelt weich statt zu zittern und senkt den Blick im All, damit Horizont und Erde im Bild bleiben.
 
 Auf Computern läuft die volle Grafik mit Bloom (leuchtende Flammen, Sonne und Sterne), Kantenglättung und Spiegelungen des Himmels auf Wasser und Raketenlack. Auf Handys und schwächeren Geräten fällt der Bloom weg, damit das Spiel flüssig bleibt. Umschalten lässt sich die Stufe im Menü über das Fragezeichen (Grafik: Hoch oder Niedrig). Die Wahl merkt sich der Browser. Alternativ erzwingt `?grafik=hoch` oder `?grafik=niedrig` hinter der Adresse die Stufe.
 
