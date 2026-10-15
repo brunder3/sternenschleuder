@@ -51,6 +51,10 @@ button{font-family:inherit;color:inherit}
 .btn[disabled]{opacity:.45;cursor:not-allowed;box-shadow:none}
 .icon-btn{width:48px;height:48px;border-radius:14px;border:1px solid var(--line);background:var(--panel);display:grid;place-items:center;cursor:pointer;touch-action:manipulation;padding:0;color:var(--text)}
 .icon-btn svg{width:22px;height:22px}
+.gfx-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.gfx-row>b{margin-right:auto}
+.gfx-row .btn{padding:10px 14px;font-size:13px}
+.gfx-row .btn[aria-pressed="true"]{border-color:var(--fuel);box-shadow:inset 0 0 0 1px var(--fuel)}
 .icon-btn[aria-pressed="false"]{opacity:.55}
 .coin-ico{display:inline-block;width:18px;height:18px;border-radius:50%;flex:none;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12.2' fill='none' stroke='%23fff3b8' stroke-opacity='.55' stroke-width='1.1'/%3E%3Ccircle cx='16' cy='16' r='11.3' fill='none' stroke='%237a4a00' stroke-opacity='.45' stroke-width='.9'/%3E%3Cpath d='M16 8.6l2.2 4.6 5 .6-3.7 3.4 1 5-4.5-2.5-4.5 2.5 1-5-3.7-3.4 5-.6z' fill='%23b07400' fill-opacity='.55' transform='translate(.5 .7)'/%3E%3Cpath d='M16 8.6l2.2 4.6 5 .6-3.7 3.4 1 5-4.5-2.5-4.5 2.5 1-5-3.7-3.4 5-.6z' fill='%23fff0a8'/%3E%3C/svg%3E") center/100% no-repeat,radial-gradient(circle at 34% 28%,#fffbe0 0 10%,#ffe27a 26%,#f2b72a 52%,#c98a0c 74%,#8f5c00 100%);box-shadow:inset 0 0 0 1.5px #a86f00,inset 0 1px 1px rgba(255,255,255,.6),0 1px 2px rgba(0,0,0,.35)}
 .pill{display:inline-flex;align-items:center;gap:8px;padding:9px 15px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font-weight:700;font-size:18px;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -328,7 +332,7 @@ kbd{font-family:var(--ui);font-weight:700;font-size:12px;border:1px solid var(--
 <div id="menu" class="layer" hidden>
   <div class="tl">
     <button class="icon-btn" id="btnSound" aria-label="Ton an oder aus" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>
-    <button class="icon-btn" id="btnHelp" aria-label="Steuerung anzeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.6 2.6 0 0 1 5 .8c0 1.7-2.5 2.2-2.5 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg></button>
+    <button class="icon-btn" id="btnHelp" aria-label="Steuerung und Grafik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.6 2.6 0 0 1 5 .8c0 1.7-2.5 2.2-2.5 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg></button>
   </div>
   <div class="tc">
     <div class="record"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 3h10v3h3v2a5 5 0 0 1-4.3 5A5 5 0 0 1 13 15.9V18h3v3H8v-3h3v-2.1A5 5 0 0 1 8.3 13 5 5 0 0 1 4 8V6h3zm-1 5c0 1.1.6 2.1 1.5 2.6A8 8 0 0 1 7 8zm11 0v.6c0 .7-.2 1.4-.5 2 .9-.5 1.5-1.5 1.5-2.6z"/></svg><div><small>Rekord</small><b id="mBest">0 m</b></div></div>
@@ -448,7 +452,12 @@ kbd{font-family:var(--ui);font-weight:700;font-size:12px;border:1px solid var(--
       <div><b>4 · Sammeln</b>Kanister füllen den Tank, Ringe geben Tempo, Münzen bringen Geld für Upgrades. <kbd>Shift</kbd> zündet den Turbo.</div>
       <div><b>5 · Zeitraffer</b>Im All sind die Entfernungen riesig. Höhe und Tempo sind echt, die Zeit läuft im Zeitraffer. Der Faktor steht unter der Höhe.</div>
     </div>
-    <p class="muted" style="margin:0;font-size:12px;line-height:1.4">Fotos: Himmel, Boden, Milchstraße und Wasser aus den <a href="https://github.com/BabylonJS/Assets" target="_blank" rel="noopener" style="color:inherit">Babylon.js Assets</a> (CC BY 4.0), Erde, Mond, Mars, Jupiter und Saturn nach NASA-Aufnahmen, Wolke von Poly Haven (CC0).</p>
+    <div class="gfx-row" role="group" aria-label="Grafikqualität"><b>Grafik</b>
+      <button class="btn" id="btnGfxHigh" aria-pressed="false">Hoch</button>
+      <button class="btn" id="btnGfxLow" aria-pressed="false">Niedrig</button>
+      <span class="muted" style="flex-basis:100%;font-size:12px">Hoch: Leuchteffekte, Kantenglättung, schärfere Schatten. Niedrig: flüssiger auf Handys und älteren Rechnern.</span>
+    </div>
+    <p class="muted" style="margin:0;font-size:12px;line-height:1.4">Fotos: Himmel, Boden, Milchstraße und Wasser aus den <a href="https://github.com/BabylonJS/Assets" target="_blank" rel="noopener" style="color:inherit">Babylon.js Assets</a> (CC BY 4.0), Erde, Mond, Mars, Jupiter und Saturn nach NASA-Aufnahmen, Wolke von Poly Haven (CC0). 3D-Modelle von Saturn V, Jupiter-C, Ares I-X und dem Startturm aus den <a href="https://github.com/nasa/NASA-3D-Resources" target="_blank" rel="noopener" style="color:inherit">NASA 3D Resources</a> (gemeinfrei).</p>
     <button class="btn primary" id="btnHelpClose">Verstanden</button>
   </div>
 </div>
@@ -468,12 +477,13 @@ kbd{font-family:var(--ui);font-weight:700;font-size:12px;border:1px solid var(--
 <div class="nogl" id="nogl" hidden><div><h2 style="font-family:var(--display);font-weight:400">3D läuft hier nicht</h2><p>Dein Browser konnte WebGL nicht starten. Probier einen aktuellen Chrome, Edge, Firefox oder Safari.</p></div></div>
 
 <script src="vendor/three.min.js?v=4"></script>
-<script src="vendor/three-extras.min.js?v=4"></script>
-<script src="js/core.js?v=4"></script>
+<script src="vendor/three-extras.min.js?v=5"></script>
+<script src="js/core.js?v=5"></script>
 <script src="js/photos.js?v=4"></script>
+<script src="js/nasa.js?v=5"></script>
 <script src="js/audio.js?v=4"></script>
-<script src="js/models.js?v=4"></script>
-<script src="js/world.js?v=4"></script>
-<script src="js/game.js?v=4"></script>
+<script src="js/models.js?v=5"></script>
+<script src="js/world.js?v=5"></script>
+<script src="js/game.js?v=5"></script>
 </body>
 </html>

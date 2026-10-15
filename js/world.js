@@ -16,6 +16,7 @@ const World = (() => {
   // sun high on the right and slightly behind the camera, so terrain and planets are lit from the viewer's side
   const sunDir = new T.Vector3(-0.3, 0.68, 0.66).normalize();
   let lowPower = false;
+  const GFX_KEY = 'sternenschleuder.grafik';
   let photoSky = null;
   let composer = null, bloom = null, pmrem = null, envRT = null, envHu = -1, envTime = -99;
 
@@ -541,8 +542,10 @@ const World = (() => {
 
   // ---------- init ----------
   function init(canvas) {
-    // quality: phones and small machines skip bloom; ?grafik=hoch or ?grafik=niedrig overrides the guess
+    // quality: phones and small machines skip bloom; the menu switch (stored per browser) or
+    // ?grafik=hoch / ?grafik=niedrig overrides the guess
     let q = null; try { q = new URLSearchParams(location.search).get('grafik'); } catch (e) { /* no query */ }
+    if (q !== 'hoch' && q !== 'niedrig') { try { q = localStorage.getItem(GFX_KEY); } catch (e) { /* storage blocked */ } }
     lowPower = q === 'niedrig' ? true : q === 'hoch' ? false : /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || (navigator.hardwareConcurrency || 8) <= 4;
     renderer = new T.WebGLRenderer({ canvas, antialias: !lowPower, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.5 : 2));
@@ -579,17 +582,7 @@ const World = (() => {
     buildHelio();
     // reflections and soft ambient light come from the sky itself (image-based lighting)
     pmrem = new T.PMREMGenerator(renderer);
-    // bloom for flames, sun and stars, with multisampled anti-aliasing (skipped on phones)
-    if (!lowPower && T.EffectComposer) {
-      const rt = new T.WebGLRenderTarget(4, 4, { type: T.HalfFloatType, samples: 4 });
-      composer = new T.EffectComposer(renderer, rt);
-      composer.addPass(new T.RenderPass(bgScene, bgCamera));
-      const main = new T.RenderPass(scene, camera); main.clear = false; main.clearDepth = true;
-      composer.addPass(main);
-      bloom = new T.UnrealBloomPass(new T.Vector2(256, 256), 0.32, 0.45, 1.0);
-      composer.addPass(bloom);
-      composer.addPass(new T.OutputPass());
-    }
+    if (!lowPower) buildComposer();
     fxAdd = makeParticles(lowPower ? 500 : 900, T.AdditiveBlending);
     fxNorm = makeParticles(lowPower ? 400 : 700, T.NormalBlending);
     scene.add(fxNorm.pts); scene.add(fxAdd.pts);
@@ -597,7 +590,33 @@ const World = (() => {
     updateDeco(0, 0, 0, true, 0, true);
     updateClouds(0, 30, true);
   }
+  // bloom for flames, sun and stars, with multisampled anti-aliasing (skipped on phones)
+  function buildComposer() {
+    if (!T.EffectComposer) return;
+    const rt = new T.WebGLRenderTarget(4, 4, { type: T.HalfFloatType, samples: 4 });
+    composer = new T.EffectComposer(renderer, rt);
+    composer.addPass(new T.RenderPass(bgScene, bgCamera));
+    const main = new T.RenderPass(scene, camera); main.clear = false; main.clearDepth = true;
+    composer.addPass(main);
+    bloom = new T.UnrealBloomPass(new T.Vector2(256, 256), 0.32, 0.45, 1.0);
+    composer.addPass(bloom);
+    composer.addPass(new T.OutputPass());
+  }
+  // switch the quality while playing: bloom and MSAA, pixel ratio and shadow resolution
+  function setQuality(high) {
+    lowPower = !high;
+    try { localStorage.setItem(GFX_KEY, high ? 'hoch' : 'niedrig'); } catch (e) { /* storage blocked */ }
+    if (high && !composer) buildComposer();
+    if (!high && composer) { bloom.dispose(); composer.dispose(); composer = null; bloom = null; }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.5 : 2));
+    const m = lowPower ? 1024 : 2048;
+    if (sunLight.shadow.map) { sunLight.shadow.map.dispose(); sunLight.shadow.map = null; }
+    sunLight.shadow.mapSize.set(m, m);
+    if (size) resize(size[0], size[1]);
+  }
+  let size = null;
   function resize(w, h) {
+    size = [w, h];
     renderer.setSize(w, h, false);
     if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); }
     camera.aspect = w / h; camera.updateProjectionMatrix();
@@ -771,6 +790,6 @@ const World = (() => {
     get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; },
     fx: { add: p => fxAdd.spawn(p), norm: p => fxNorm.spawn(p), clear() { fxAdd.clear(); fxNorm.clear(); } },
     resetClouds(x, y) { updateClouds(x, y, true); },
-    get lowPower() { return lowPower; },
+    get lowPower() { return lowPower; }, setQuality,
   };
 })();

@@ -1131,7 +1131,7 @@
     }
     const m = Models.rocket(R.look);
     m.rotation.order = 'ZYX'; m.rotation.z = 0.32; m.rotation.x = -0.5;
-    m.scale.setScalar(9 / m.userData.length);
+    m.scale.setScalar((R.look.model ? 12 : 9) / m.userData.length);   // the slim real launchers get a longer frame
     m.userData.setThrust(locked ? 0 : 0.55, 1.3);
     prev.s.add(m);
     prev.r.render(prev.s, prev.c);
@@ -1271,7 +1271,14 @@
   $('btnMissions').onclick = () => { Sfx.init(); Sfx.click(); openHangar('missions'); };
   $('btnToPad').onclick = () => { Sfx.click(); closeHangar(); };
   $('btnSound').onclick = () => { Sfx.init(); save.settings.sound = !save.settings.sound; Sfx.setOn(save.settings.sound); persist(); updateMenu(); Sfx.click(); };
-  $('btnHelp').onclick = () => { $('help').hidden = false; G.overlay = 'help'; };
+  // graphics quality, in the help sheet. High: bloom, anti-aliasing and sharper shadows; low: faster on phones
+  function updateGfx() {
+    $('btnGfxHigh').setAttribute('aria-pressed', World.lowPower ? 'false' : 'true');
+    $('btnGfxLow').setAttribute('aria-pressed', World.lowPower ? 'true' : 'false');
+  }
+  $('btnGfxHigh').onclick = () => { Sfx.click(); World.setQuality(true); updateGfx(); };
+  $('btnGfxLow').onclick = () => { Sfx.click(); World.setQuality(false); updateGfx(); };
+  $('btnHelp').onclick = () => { updateGfx(); $('help').hidden = false; G.overlay = 'help'; };
   function closeHelp() { $('help').hidden = true; G.overlay = null; }
   $('btnHelpClose').onclick = closeHelp;
   $('btnPause').onclick = () => togglePause();
@@ -1350,6 +1357,12 @@
     try { window.claude?.hot?.snapshot?.(() => ({ save })); } catch (e) { /* not in a viewer */ }
     resize();
     setRocketMesh(save.rocket);
+    // the NASA models parse in the background: rebuild the rocket and the hangar pictures once they are in
+    Models.onModels(() => {
+      previews.clear();
+      if ((ROCKET_BY_ID[save.rocket] || ROCKETS[0]).look.model) { rocketMeshId = ''; setRocketMesh(save.rocket); }
+      if (!$('hangar').hidden) renderHangar();
+    });
     G.state = 'title';
     showScreen('title');
     if (save.stats.flights > 0) $('btnPlay').textContent = 'Weiterspielen';

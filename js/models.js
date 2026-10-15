@@ -1,5 +1,6 @@
 /* Sternenschleuder 3D models and procedural textures (three.js r159 classic build).
-   Every model is built from primitives at runtime: no model or image files.
+   Most models are built from primitives at runtime. Photos come from js/photos.js, and three real
+   launchers plus the launch tower are NASA glTF models from js/nasa.js; the procedural ones stay as fallbacks.
    Scale: 1 three.js unit = 10 physics units (u). The rocket is about 7 units long. */
 const Models = (() => {
   'use strict';
@@ -24,11 +25,11 @@ const Models = (() => {
     if (!matCache.has(key)) matCache.set(key, new T.MeshStandardMaterial(Object.assign({ color, roughness: rough, metalness: metal }, extra || {})));
     return matCache.get(key);
   }
-  // car-like paint: a glossy clear coat over the colour reflects the sky
+  // painted metal: a clear coat over the colour reflects the sky
   const paintCache = new Map();
   function paint(color, rough = 0.4, metal = 0.1) {
     const key = color + '|' + rough + '|' + metal;
-    if (!paintCache.has(key)) paintCache.set(key, new T.MeshPhysicalMaterial({ color, roughness: rough, metalness: metal, clearcoat: 0.85, clearcoatRoughness: 0.12 }));
+    if (!paintCache.has(key)) paintCache.set(key, new T.MeshPhysicalMaterial({ color, roughness: rough, metalness: metal, clearcoat: 0.5, clearcoatRoughness: 0.2 }));
     return paintCache.get(key);
   }
   function glowMat(color, opacity = 1) {
@@ -325,6 +326,117 @@ const Models = (() => {
     for (const x of [38, 72]) { g.beginPath(); g.moveTo(x, 30); g.lineTo(x + 26, 64); g.lineTo(x, 98); g.stroke(); }
     return c;
   }
+  // turn a grey height canvas into a tangent-space normal map (rows wrap only when wrapY is set)
+  function heightToNormal(src, strength, wrapY) {
+    const w = src.width, h = src.height, sd = src.getContext('2d').getImageData(0, 0, w, h).data;
+    const c = makeCanvas(w, h), g = c.getContext('2d'), img = g.createImageData(w, h), d = img.data;
+    const H = (x, y) => sd[(((y + h) % h) * w + (x + w) % w) * 4] / 255;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const yu = wrapY ? y - 1 : Math.max(0, y - 1), yd = wrapY ? y + 1 : Math.min(h - 1, y + 1);
+      // canvas rows run down while texture v runs up, hence the sign of ny
+      const nx = -(H(x + 1, y) - H(x - 1, y)) * strength, ny = (H(x, yd) - H(x, yu)) * strength, l = Math.hypot(nx, ny, 1), k = (y * w + x) * 4;
+      d[k] = (nx / l * 0.5 + 0.5) * 255; d[k + 1] = (ny / l * 0.5 + 0.5) * 255; d[k + 2] = (1 / l * 0.5 + 0.5) * 255; d[k + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+  // rocket skin, wrapped once around and once along the body: welded panel rings with rivets,
+  // faint weathering streaks and engine soot toward the tail (the bottom of the canvas)
+  function hullCanvases() {
+    const W = 512, H = 1024, rnd = mulberry(77);
+    const c = makeCanvas(W, H), g = c.getContext('2d');
+    const hc = makeCanvas(W, H), hg = hc.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+    hg.fillStyle = '#808080'; hg.fillRect(0, 0, W, H);
+    for (let i = 0; i < 260; i++) {                    // large, soft paint variation
+      g.fillStyle = `rgba(${rnd() < 0.5 ? '120,120,130' : '255,255,255'},${0.025 + rnd() * 0.03})`;
+      g.fillRect(rnd() * W, rnd() * H, 20 + rnd() * 120, 10 + rnd() * 60);
+    }
+    const rings = 7;
+    for (let k = 0; k <= rings; k++) {
+      const y = Math.round(k * H / rings);
+      g.fillStyle = 'rgba(40,44,52,.28)'; g.fillRect(0, y - 1, W, 2);
+      g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(0, y + 1, W, 1);
+      hg.fillStyle = '#3a3a3a'; hg.fillRect(0, y - 2, W, 4);
+      for (let x = 4; x < W; x += 9) for (const dy of [-7, 7]) {   // rivet rows either side of the weld
+        hg.fillStyle = '#d0d0d0'; hg.beginPath(); hg.arc(x, y + dy, 1.6, 0, TAU); hg.fill();
+        g.fillStyle = 'rgba(60,64,72,.22)'; g.fillRect(x - 1, y + dy - 1, 2, 2);
+      }
+      if (k < rings) {                                // staggered vertical panel seams
+        const off = rnd();
+        for (let j = 0; j < 6; j++) {
+          const x = Math.round(((j + off) / 6) * W) % W;
+          g.fillStyle = 'rgba(40,44,52,.2)'; g.fillRect(x, y, 1.5, H / rings);
+          hg.fillStyle = '#505050'; hg.fillRect(x - 1, y, 3, H / rings);
+        }
+      }
+    }
+    for (let i = 0; i < 70; i++) {                    // rain and frost streaks
+      const x = rnd() * W, y = rnd() * H, len = 40 + rnd() * 200;
+      const gr = g.createLinearGradient(0, y, 0, y + len);
+      gr.addColorStop(0, `rgba(90,84,76,${0.05 + rnd() * 0.07})`); gr.addColorStop(1, 'rgba(90,84,76,0)');
+      g.fillStyle = gr; g.fillRect(x, y, 1 + rnd() * 3, len);
+    }
+    const soot = g.createLinearGradient(0, H, 0, H * 0.74);   // engine soot at the tail
+    soot.addColorStop(0, 'rgba(26,22,18,.7)'); soot.addColorStop(0.35, 'rgba(40,34,28,.28)'); soot.addColorStop(1, 'rgba(40,34,28,0)');
+    g.fillStyle = soot; g.fillRect(0, H * 0.7, W, H * 0.3);
+    for (let i = 0; i < 90; i++) {
+      const x = rnd() * W, len = H * (0.05 + rnd() * 0.22), gr = g.createLinearGradient(0, H, 0, H - len);
+      gr.addColorStop(0, `rgba(20,16,12,${0.15 + rnd() * 0.25})`); gr.addColorStop(1, 'rgba(20,16,12,0)');
+      g.fillStyle = gr; g.fillRect(x, H - len, 1 + rnd() * 4, len);
+    }
+    return { map: c, normal: heightToNormal(hc, 6, false) };
+  }
+  // engine bell along v: dome and chamber in steel, brazed copper tubes at the throat,
+  // heat-tinted blue and gold toward the exit, soot at the lip
+  function bellCanvas() {
+    const c = makeCanvas(128, 256), g = c.getContext('2d');
+    const gr = g.createLinearGradient(0, 0, 0, 256);
+    [[0, '#9aa0aa'], [0.22, '#7d838e'], [0.32, '#b4774a'], [0.45, '#a8673c'], [0.58, '#6d6a86'], [0.74, '#8a7a5a'], [0.9, '#4a4440'], [1, '#1d1a18']]
+      .forEach(([t, col]) => gr.addColorStop(t, col));
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 256);
+    for (let x = 0; x < 128; x += 2) { g.fillStyle = x % 4 ? 'rgba(0,0,0,.18)' : 'rgba(255,255,255,.08)'; g.fillRect(x, 60, 1, 196); }
+    for (const y of [56, 84, 150, 200]) { g.fillStyle = 'rgba(30,30,34,.55)'; g.fillRect(0, y, 128, 3); }
+    return c;
+  }
+  // poured concrete apron: slab joints, tyre and rust stains, scorch around the flame trench
+  function concreteCanvas() {
+    const W = 1024, H = 784, rnd = mulberry(5), c = makeCanvas(W, H), g = c.getContext('2d');
+    g.fillStyle = '#b9bcc2'; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 9000; i++) {
+      const v = 150 + rnd() * 70 | 0;
+      g.fillStyle = `rgba(${v},${v},${v + 4},${0.08 + rnd() * 0.12})`; g.fillRect(rnd() * W, rnd() * H, 1 + rnd() * 3, 1 + rnd() * 3);
+    }
+    for (let i = 0; i < 40; i++) {
+      const x = rnd() * W, y = rnd() * H, r = 20 + rnd() * 90, gr = g.createRadialGradient(x, y, 0, x, y, r);
+      const col = rnd() < 0.25 ? '120,84,50' : '70,72,78';
+      gr.addColorStop(0, `rgba(${col},${0.05 + rnd() * 0.1})`); gr.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = gr; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+    }
+    g.fillStyle = 'rgba(70,72,78,.55)';
+    for (let x = 0; x <= W; x += W / 8) g.fillRect(x - 1, 0, 2, H);
+    for (let y = 0; y <= H; y += H / 6) g.fillRect(0, y - 1, W, 2);
+    // scorch: the flame trench sits at x = 1.5 on the 33.6 x 25.6 deck
+    const tx = (1.5 + 16.8) / 33.6 * W, ty = H / 2;
+    for (const [r, a] of [[360, 0.35], [220, 0.5], [140, 0.6]]) {
+      const gr = g.createRadialGradient(tx + 40, ty, 0, tx + 40, ty, r);
+      gr.addColorStop(0, `rgba(22,20,18,${a})`); gr.addColorStop(1, 'rgba(22,20,18,0)');
+      g.fillStyle = gr; g.fillRect(tx + 40 - r, ty - r, 2 * r, 2 * r);
+    }
+    return c;
+  }
+  // vertical name on the hull, read from tail to nose like the lettering on real launchers
+  function labelCanvas(text, color) {
+    const c = makeCanvas(128, 640), g = c.getContext('2d');
+    g.translate(64, 320); g.rotate(-Math.PI / 2);
+    let size = 84;
+    g.font = `800 ${size}px system-ui, sans-serif`;
+    const w = g.measureText(text).width;
+    if (w > 600) { size = Math.floor(size * 600 / w); g.font = `800 ${size}px system-ui, sans-serif`; }
+    g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, 0, 4);
+    return c;
+  }
   function buildTextures() {
     TEX.glow = canvasTex(radial(128, [[0, 'rgba(255,255,255,1)'], [0.22, 'rgba(255,255,255,.5)'], [0.55, 'rgba(255,255,255,.12)'], [1, 'rgba(255,255,255,0)']]));
     TEX.dot = canvasTex(radial(64, [[0, 'rgba(255,255,255,1)'], [0.45, 'rgba(255,255,255,.55)'], [1, 'rgba(255,255,255,0)']]));
@@ -344,7 +456,13 @@ const Models = (() => {
     TEX.chevron = canvasTex(chevronCanvas());
     for (const p of ['moon', 'mars', 'jupiter', 'saturn', 'earth']) TEX[p] = canvasTex(planetCanvas(p));
     TEX.coinNormal = canvasTex(coinNormalCanvas()); TEX.coinNormal.colorSpace = T.NoColorSpace;
+    const hc = hullCanvases();
+    TEX.hull = canvasTex(hc.map); TEX.hull.wrapS = T.RepeatWrapping;
+    TEX.hullN = canvasTex(hc.normal); TEX.hullN.wrapS = T.RepeatWrapping; TEX.hullN.colorSpace = T.NoColorSpace;
+    TEX.bell = canvasTex(bellCanvas()); TEX.bell.wrapS = T.RepeatWrapping;
+    TEX.concrete = canvasTex(concreteCanvas()); TEX.concrete.anisotropy = 8;
     loadPhotos();
+    loadModels();
   }
   // photo textures from js/photos.js (embedded data URLs); the drawn textures above stay as fallbacks
   function loadPhotos() {
@@ -397,7 +515,101 @@ const Models = (() => {
     s.closePath();
     return s;
   }
+  // satin rocket paint over the panel texture: welds, rivets and soot come from TEX.hull / TEX.hullN
+  const hullCache = new Map();
+  function hull(color, rough = 0.48) {
+    const key = color + '|' + rough;
+    if (!hullCache.has(key)) hullCache.set(key, new T.MeshPhysicalMaterial({ color, map: TEX.hull, normalMap: TEX.hullN, normalScale: new T.Vector2(0.55, 0.55), roughness: rough, metalness: 0.08, clearcoat: 0.4, clearcoatRoughness: 0.28 }));
+    return hullCache.get(key);
+  }
+  // map v along the height so the panel rings stay evenly spaced on any profile
+  function lengthUV(geo, y0, y1) {
+    const p = geo.attributes.position, uv = geo.attributes.uv;
+    for (let i = 0; i < p.count; i++) uv.setY(i, (p.getY(i) - y0) / (y1 - y0));
+    return geo;
+  }
+  // rocket engine: dome, combustion chamber, throat and a bell nozzle; the exit lies at y = 0, the bell rises along +Y
+  let bellMat = null;
+  function engineBell(re) {
+    if (!bellMat) bellMat = new T.MeshStandardMaterial({ map: TEX.bell, metalness: 0.85, roughness: 0.36, side: T.DoubleSide });
+    const lb = re * 1.55, rt = re * 0.34, pts = [];
+    for (let i = 0; i <= 12; i++) {             // bell: wide open at the exit, curving in to the throat
+      const t = i / 12;
+      pts.push([rt + (re - rt) * Math.pow(1 - t, 1.9) * (1 + 0.25 * t), t * lb]);
+    }
+    pts.push([rt * 1.55, lb * 1.12], [rt * 1.6, lb * 1.32], [rt * 1.2, lb * 1.45], [rt * 0.4, lb * 1.5]);
+    const geo = lathe(pts, 28);
+    const g = new T.Group();
+    g.add(new T.Mesh(geo, bellMat));
+    const lip = new T.Mesh(new T.TorusGeometry(re * 1.0, re * 0.035, 6, 28), bellMat);
+    lip.rotation.x = Math.PI / 2; g.add(lip);
+    // the hot throat glows faintly from inside
+    const glow = new T.Mesh(new T.CircleGeometry(rt * 1.05, 16), new T.MeshBasicMaterial({ color: 0xffb070, transparent: true, opacity: 0, toneMapped: false }));
+    glow.rotation.x = Math.PI / 2; glow.position.y = lb * 0.98; g.add(glow);
+    g.userData = { length: lb * 1.5, glow };
+    return g;
+  }
+  // exhaust: three nested additive cones that fade toward the tip, shock diamonds and a glow sprite;
+  // built from the nozzle exit along -Y
+  let diamondGeo = null;
+  function flame(cols, r, len) {
+    const g = new T.Group();
+    const layers = [[1, 1, cols[2], 0.75], [0.7, 0.72, cols[1], 0.9], [0.4, 0.42, cols[0], 1]];
+    for (const [lm, wm, col, op] of layers) {
+      const geo = new T.ConeGeometry(r * wm, len * lm, 24, 6, true);
+      const pos = geo.attributes.position, rgba = new Float32Array(pos.count * 4), hh = len * lm / 2;
+      // clamp: float32 positions can sit a hair above hh, and pow() of a negative number is NaN,
+      // which the bloom pass would smear over the whole screen
+      for (let i = 0; i < pos.count; i++) { const a = Math.pow(Math.max(0, (hh - pos.getY(i)) / (2 * hh)), 1.4); rgba.set([1, 1, 1, a], i * 4); }
+      geo.setAttribute('color', new T.BufferAttribute(rgba, 4));
+      const mat = new T.MeshBasicMaterial({ color: col, vertexColors: true, transparent: true, opacity: op, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
+      const c = new T.Mesh(geo, mat);
+      c.rotation.x = Math.PI; c.position.y = -len * lm / 2;
+      g.add(c);
+    }
+    // Mach diamonds: standing shock knots in a supersonic jet
+    if (!diamondGeo) diamondGeo = new T.SphereGeometry(1, 12, 8);
+    const dm = new T.MeshBasicMaterial({ color: cols[0], transparent: true, opacity: 0.5, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
+    for (let i = 0; i < 4; i++) {
+      const d = new T.Mesh(diamondGeo, dm), s = 1 - i * 0.17;
+      d.scale.set(r * 0.36 * s, len * 0.045, r * 0.36 * s); d.position.y = -len * (0.09 + i * 0.12);
+      g.add(d);
+    }
+    const glowS = new T.Sprite(glowMat(cols[1], 0.9));
+    glowS.scale.set(r * 6, r * 6, 1); glowS.position.y = -r * 0.5;
+    g.add(glowS);
+    g.userData.baseLen = len;
+    return g;
+  }
+  // shared tail of every rocket: shadows, flames, the throttle
+  function finishRocket(root, L, R, flames, bells) {
+    // glowing parts (flames, halo) are light, not solid: they cast no shadow
+    root.traverse(o => { if (o.isMesh) o.castShadow = o.material.blending !== T.AdditiveBlending; });
+    let flick = 0;
+    root.userData = {
+      length: L, radius: R, flames,
+      // level 0..1.6 (1 = boost, >1 = turbo)
+      setThrust(level, t) {
+        flick = 0.85 + Math.sin(t * 47) * 0.07 + Math.random() * 0.14;
+        flames.forEach(f => {
+          const l = level * (f.userData.k || 1);
+          f.visible = l > 0.02;
+          if (f.visible) f.scale.set(0.7 + 0.3 * Math.min(1, l), Math.max(0.05, l * flick), 0.7 + 0.3 * Math.min(1, l));
+        });
+        for (const b of bells) b.userData.glow.material.opacity = Math.min(1, level) * 0.9;
+      },
+    };
+    root.userData.setThrust(0, 0);
+    return root;
+  }
+  // engine layouts (x, z as fractions of the hull radius)
+  const CLUSTERS = {
+    1: [[0, 0]],
+    3: [0, 1, 2].map(i => [Math.cos(i * TAU / 3 + Math.PI / 2) * 0.46, Math.sin(i * TAU / 3 + Math.PI / 2) * 0.46]),
+    5: [[0, 0], ...[0, 1, 2, 3].map(i => [Math.cos(i * TAU / 4 + Math.PI / 4) * 0.52, Math.sin(i * TAU / 4 + Math.PI / 4) * 0.52])],
+  };
   function rocket(look) {
+    if (look.model && GLB[look.model]) return modelRocket(look);
     const root = new T.Group();
     const inner = new T.Group();          // built along +Y, turned so the nose points along +X
     inner.rotation.z = -Math.PI / 2;
@@ -405,16 +617,18 @@ const Models = (() => {
     const L = 7.2 * look.len, R = 1.05 * look.w;
     const noseLen = look.nose === 'blunt' ? L * 0.17 : look.nose === 'cone' ? L * 0.3 : L * 0.34;
     const y0 = -L / 2, yB = L / 2 - noseLen;
-    const bodyMat = paint(look.body, 0.45, 0.1), accMat = paint(look.accent, 0.4, 0.2), trimMat = paint(look.trim, 0.3, 0.6);
+    const bodyMat = hull(look.body), accMat = paint(look.accent, 0.4, 0.2), trimMat = paint(look.trim, 0.3, 0.6);
     const darkMetal = std('#3a3f4a', 0.35, 0.8, { side: T.DoubleSide });
-    // body and nose
-    inner.add(new T.Mesh(lathe([[R * 0.78, y0], [R * 0.96, y0 + L * 0.025], [R, y0 + L * 0.06], [R, yB]]), bodyMat));
-    // base plate: the hull is a lathe that is open at the bottom; close it so it is not see-through from below
-    const base = new T.Mesh(new T.CircleGeometry(R * 0.79, 32), darkMetal);
+    // body: a slight boat tail at the base, then a straight barrel up to the nose
+    const prof = [[R * 0.8, y0], [R * 0.93, y0 + L * 0.02], [R * 0.985, y0 + L * 0.045], [R, y0 + L * 0.07]];
+    for (let i = 1; i <= 10; i++) prof.push([R, y0 + L * 0.07 + (yB - y0 - L * 0.07) * i / 10]);
+    inner.add(new T.Mesh(lengthUV(lathe(prof, 40), y0, yB), bodyMat));
+    // heat shield across the base: the hull is open at the bottom; close it so it is not see-through from below
+    const base = new T.Mesh(new T.CircleGeometry(R * 0.81, 32), darkMetal);
     base.rotation.x = Math.PI / 2; base.position.y = y0 + 0.001; inner.add(base);
-    inner.add(new T.Mesh(lathe(noseProfile(look.nose, R, yB, noseLen)), accMat));
+    inner.add(new T.Mesh(lathe(noseProfile(look.nose, R, yB, noseLen), 40), accMat));
     // stripes
-    const ring = (y, h, mat) => { const m = new T.Mesh(new T.CylinderGeometry(R * 1.012, R * 1.012, h, 32, 1, true), mat); m.position.y = y; inner.add(m); };
+    const ring = (y, h, mat) => { const m = new T.Mesh(new T.CylinderGeometry(R * 1.012, R * 1.012, h, 40, 1, true), mat); m.position.y = y; inner.add(m); };
     if (look.stripes >= 3 && look.body === '#ffcd2e') for (let i = 0; i < 3; i++) ring(y0 + L * (0.18 + i * 0.16), L * 0.07, accMat);
     else if (look.stripes >= 3) for (let i = 0; i < 5; i++) ring(y0 + L * (0.12 + i * 0.11), L * 0.045, accMat);
     else {
@@ -422,10 +636,28 @@ const Models = (() => {
       if (look.stripes > 1) ring(y0 + L * 0.2, L * 0.035, trimMat);
     }
     if (look.flame === 'water') ring(y0 + L * 0.34, L * 0.2, trimMat);
+    // cable raceway along the hull and four RCS thruster pods under the nose
+    const detail = std('#c9ccd3', 0.5, 0.45);
+    const race = new T.Mesh(new T.BoxGeometry(R * 0.13, (yB - y0) * 0.78, R * 0.09), bodyMat);
+    race.position.set(Math.sin(-1.1) * R, y0 + (yB - y0) * 0.5, Math.cos(-1.1) * R); race.rotation.y = -1.1; inner.add(race);
+    for (let i = 0; i < 4; i++) {
+      const a = i * Math.PI / 2 + Math.PI / 4;
+      const pod = new T.Mesh(new T.BoxGeometry(R * 0.2, R * 0.26, R * 0.14), detail);
+      pod.position.set(Math.sin(a) * R * 1.02, yB - L * 0.025, Math.cos(a) * R * 1.02); pod.rotation.y = a; inner.add(pod);
+    }
+    // painted name, on the side the chase camera sees
+    if (look.label) {
+      const col = new T.Color(look.body), lum = 0.2126 * col.r + 0.7152 * col.g + 0.0722 * col.b;
+      const tex = canvasTex(labelCanvas(look.label, lum > 0.35 ? '#1b1f29' : '#eef1f6'));
+      const h = (yB - y0) * 0.5;
+      const lab = new T.Mesh(new T.CylinderGeometry(R * 1.004, R * 1.004, h, 12, 1, true, -0.32, 0.64),
+        new T.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.25, roughness: 0.55, metalness: 0.05, polygonOffset: true, polygonOffsetFactor: -2 }));
+      lab.position.y = y0 + L * 0.1 + h / 2; inner.add(lab);
+    }
     // fins
     const nFins = look.fins === 'wing' ? 2 : look.fins === 'grid' ? 4 : look.len < 1 ? 3 : 4;
-    const finGeo = new T.ExtrudeGeometry(finShape(look.fins === 'grid' ? 'delta' : look.fins, R, L), { depth: R * 0.14, bevelEnabled: false });
-    finGeo.translate(0, 0, -R * 0.07);
+    const finGeo = new T.ExtrudeGeometry(finShape(look.fins === 'grid' ? 'delta' : look.fins, R, L), { depth: R * 0.09, bevelEnabled: true, bevelThickness: R * 0.025, bevelSize: R * 0.022, bevelSegments: 2 });
+    finGeo.translate(0, 0, -R * 0.045);
     for (let i = 0; i < nFins; i++) {
       const pivot = new T.Group();
       pivot.rotation.y = (i / nFins) * TAU + (nFins === 2 ? Math.PI / 2 : Math.PI / 4);
@@ -450,72 +682,89 @@ const Models = (() => {
       const w = new T.Mesh(new T.SphereGeometry(R * 0.42, 20, 12, 0, TAU, 0, Math.PI / 2), glass);
       w.rotation.x = Math.PI / 2; w.scale.set(1, 0.35, 1); w.position.set(0, y, R * 0.95); inner.add(w);
     }
-    // nozzle
-    const noz = new T.Mesh(new T.CylinderGeometry(R * 0.55, R * 0.8, L * 0.09, 24, 1, true), darkMetal);
-    noz.position.y = y0 - L * 0.04; inner.add(noz);
-    // flames
+    // engines: one big bell on small rockets, clusters of three or five on the long ones
     const cols = FLAME_COLORS[look.flame] || FLAME_COLORS.warm;
-    const flames = [];
-    function addFlame(x, z, r, len) {
-      const g = new T.Group();
-      g.position.set(x, y0 - L * 0.085, z);
-      const layers = [[1, 1, cols[2], 0.75], [0.7, 0.72, cols[1], 0.9], [0.4, 0.42, cols[0], 1]];
-      for (const [lm, wm, col, op] of layers) {
-        const geo = new T.ConeGeometry(r * wm, len * lm, 24, 6, true);
-        // soft flame: full brightness at the nozzle, fading out toward the tip
-        const pos = geo.attributes.position, rgba = new Float32Array(pos.count * 4), hh = len * lm / 2;
-        for (let i = 0; i < pos.count; i++) { const a = Math.pow((hh - pos.getY(i)) / (2 * hh), 1.4); rgba.set([1, 1, 1, a], i * 4); }
-        geo.setAttribute('color', new T.BufferAttribute(rgba, 4));
-        const mat = new T.MeshBasicMaterial({ color: col, vertexColors: true, transparent: true, opacity: op, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
-        const c = new T.Mesh(geo, mat);
-        c.rotation.x = Math.PI; c.position.y = -len * lm / 2;
-        g.add(c);
-      }
-      const glowS = new T.Sprite(glowMat(cols[1], 0.9));
-      glowS.scale.set(r * 6, r * 6, 1); glowS.position.y = -r * 0.5;
-      g.add(glowS);
-      g.userData.baseLen = len;
-      inner.add(g);
-      flames.push(g);
+    const flames = [], bells = [];
+    const nEng = L >= 9.8 ? 5 : L >= 8.6 ? 3 : 1;
+    const re = R * (nEng === 1 ? 0.6 : nEng === 3 ? 0.4 : 0.31);
+    const exitY = y0 - re * 1.55 * 0.9;
+    for (const [ex, ez] of CLUSTERS[nEng]) {
+      const b = engineBell(re); b.position.set(ex * R, exitY, ez * R); inner.add(b); bells.push(b);
+      const f = flame(cols, re * (nEng === 1 ? 1.03 : 1.15), L * (nEng === 1 ? 0.75 : 0.6));
+      f.position.set(ex * R, exitY, ez * R); inner.add(f); flames.push(f);
     }
-    addFlame(0, 0, R * 0.62, L * 0.75);
     // boosters
     if (look.boosters) {
       for (const s of [-1, 1]) {
         const br = R * 0.48, bl = L * 0.55, bx = s * R * 1.42;
-        const b = new T.Mesh(lathe([[br * 0.8, 0], [br, bl * 0.06], [br, bl * 0.8], ...noseProfile('ogive', br, bl * 0.8, bl * 0.2).slice(1)], 20), trimMat);
+        const b = new T.Mesh(lengthUV(lathe([[br * 0.8, 0], [br, bl * 0.06], [br, bl * 0.8], ...noseProfile('ogive', br, bl * 0.8, bl * 0.2).slice(1)], 28), 0, bl * 0.8), hull(look.trim, 0.42));
         b.position.set(bx, y0 + L * 0.02, 0); inner.add(b);
         const bb = new T.Mesh(new T.CircleGeometry(br * 0.81, 20), darkMetal);
         bb.rotation.x = Math.PI / 2; bb.position.set(bx, y0 + L * 0.02 + 0.001, 0); inner.add(bb);
-        const bn = new T.Mesh(new T.CylinderGeometry(br * 0.55, br * 0.8, L * 0.06, 16, 1, true), darkMetal);
-        bn.position.set(bx, y0 - L * 0.01, 0); inner.add(bn);
+        const bre = br * 0.62, by = y0 + L * 0.02 - bre * 1.55 * 0.85;
+        const bn = engineBell(bre); bn.position.set(bx, by, 0); inner.add(bn); bells.push(bn);
         const strap = new T.Mesh(new T.BoxGeometry(R * 0.9, L * 0.03, br * 0.5), accMat);
         strap.position.set(s * R * 0.95, y0 + L * 0.4, 0); inner.add(strap);
-        addFlame(bx, 0, br * 0.62, L * 0.5);
-        flames[flames.length - 1].position.y = y0 - L * 0.05;
+        const f = flame(cols, bre, L * 0.5);
+        f.position.set(bx, by, 0); f.userData.k = 0.8; inner.add(f); flames.push(f);
       }
     }
     if (look.flame === 'void') {
       const halo = new T.Mesh(new T.TorusGeometry(R * 1.3, R * 0.05, 8, 40), additive(0xb48cff, 0.8));
       halo.rotation.x = Math.PI / 2; halo.position.y = yB - L * 0.1; inner.add(halo);
     }
-    // glowing parts (flames, halo) are light, not solid: they cast no shadow
-    root.traverse(o => { if (o.isMesh) o.castShadow = o.material.blending !== T.AdditiveBlending; });
-    let flick = 0;
-    root.userData = {
-      length: L, radius: R, flames,
-      // level 0..1.6 (1 = boost, >1 = turbo)
-      setThrust(level, t) {
-        flick = 0.85 + Math.sin(t * 47) * 0.07 + Math.random() * 0.14;
-        flames.forEach((f, i) => {
-          const l = level * (i === 0 ? 1 : 0.8);
-          f.visible = l > 0.02;
-          if (f.visible) f.scale.set(0.7 + 0.3 * Math.min(1, l), Math.max(0.05, l * flick), 0.7 + 0.3 * Math.min(1, l));
-        });
-      },
-    };
-    root.userData.setThrust(0, 0);
-    return root;
+    return finishRocket(root, L, R, flames, bells);
+  }
+
+  // ---------- NASA 3D models (js/nasa.js, public domain) ----------
+  // Each spec gives, in model units: the rocket axis (x, z), the tail and nose heights, the hull radius,
+  // the engine exits (x, z relative to the axis), their radius and height.
+  const MODEL_SPEC = {
+    saturnv: { axis: [-0.015, 0.745], y0: -0.14, y1: 12.85, R: 0.66, er: 0.21, ey: -0.12, engines: [[0, 0], [-0.455, -0.335], [0.335, -0.455], [0.46, 0.335], [-0.33, 0.455]] },
+    jupiterc: { axis: [-0.14, 0], y0: 1.36, y1: 18.83, R: 0.75, er: 0.34, ey: 1.6, engines: [[0, 0]] },
+    ares1b: { axis: [-0.085, 0], y0: 0.2, y1: 9.86, R: 0.31, er: 0.21, ey: 0.22, engines: [[0, 0]] },
+  };
+  const GLB = {};
+  let glbPending = 0;
+  const glbWaiters = [];
+  function loadModels() {
+    if (typeof NASA_MODELS === 'undefined' || !T.GLTFLoader) return;
+    const loader = new T.GLTFLoader();
+    if (T.MeshoptDecoder) loader.setMeshoptDecoder(T.MeshoptDecoder);
+    const done = () => { if (--glbPending === 0) glbWaiters.splice(0).forEach(f => f()); };
+    for (const [name, b64] of Object.entries(NASA_MODELS)) {
+      glbPending++;
+      try {
+        const bin = atob(b64), buf = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+        loader.parse(buf.buffer, '', gltf => { GLB[name] = gltf.scene; done(); }, err => { console.warn('model', name, err); done(); });
+      } catch (err) { console.warn('model', name, err); done(); }
+    }
+  }
+  // run f once the embedded models are parsed (at once if there are none)
+  function onModels(f) { if (glbPending === 0) f(); else glbWaiters.push(f); }
+  function modelRocket(look) {
+    const spec = MODEL_SPEC[look.model];
+    const root = new T.Group();
+    const inner = new T.Group();
+    inner.rotation.z = -Math.PI / 2;
+    root.add(inner);
+    const L = 7.2 * look.len, s = L / (spec.y1 - spec.y0);
+    // stretch the girth a little so slim real rockets still read at chase-camera distance
+    const fat = look.fat || 1;
+    const m = GLB[look.model].clone(true);
+    m.position.set(-spec.axis[0], -spec.y0, -spec.axis[1]);
+    const holder = new T.Group();
+    holder.scale.set(s * fat, s, s * fat); holder.position.y = -L / 2;
+    holder.add(m); inner.add(holder);
+    const cols = FLAME_COLORS[look.flame] || FLAME_COLORS.warm;
+    const flames = [];
+    const ey = -L / 2 + (spec.ey - spec.y0) * s, er = spec.er * s * fat;
+    for (const [ex, ez] of spec.engines) {
+      const f = flame(cols, er * 1.1, L * (spec.engines.length > 1 ? 0.62 : 0.75));
+      f.position.set(ex * s * fat, ey, ez * s * fat); inner.add(f); flames.push(f);
+    }
+    return finishRocket(root, L, spec.R * s * fat, flames, []);
   }
 
   // ---------- launch site ----------
@@ -527,7 +776,8 @@ const Models = (() => {
     const concrete = std('#a9afba', 0.85, 0.02);
     const base = new T.Mesh(new T.BoxGeometry(34, 1.6, 26), concrete);
     base.position.y = 0.8; base.receiveShadow = true; g.add(base);
-    const top = new T.Mesh(new T.BoxGeometry(33.6, 0.1, 25.6), std('#c3c8d1', 0.9, 0));
+    // the top face of the slab carries the whole apron texture (joints, stains, scorch round the trench)
+    const top = new T.Mesh(new T.BoxGeometry(33.6, 0.1, 25.6), [std('#c3c8d1', 0.9, 0), std('#c3c8d1', 0.9, 0), new T.MeshStandardMaterial({ map: TEX.concrete, roughness: 0.92, metalness: 0 }), std('#c3c8d1', 0.9, 0), std('#c3c8d1', 0.9, 0), std('#c3c8d1', 0.9, 0)]);
     top.position.y = 1.62; top.receiveShadow = true; g.add(top);
     const hz = new T.MeshStandardMaterial({ map: TEX.hazard, roughness: 0.8 });
     TEX.hazard.repeat.set(8, 1);
@@ -553,10 +803,10 @@ const Models = (() => {
     }
     const axle = new T.Mesh(new T.CylinderGeometry(0.35, 0.35, 3, 12), white);
     axle.rotation.x = Math.PI / 2; axle.position.set(0, PAD_PIVOT, -2.3); g.add(axle);
-    // the launch rail: a lattice beam with clamp arms, rotated by setRail()
+    // the launch rail (erector): a welded steel truss with clamp arms, rotated by setRail()
     const rail = new T.Group(); rail.position.set(0, PAD_PIVOT, 0); g.add(rail);
-    const beam = new T.Mesh(new T.BoxGeometry(17, 1.3, 1.3), latMat); beam.position.set(8.2, 0, -2.6); rail.add(beam);
-    const spine = new T.Mesh(new T.BoxGeometry(17, 0.3, 0.3), red); spine.position.set(8.2, 0.75, -2.6); rail.add(spine);
+    rail.add(truss(17, 1.3, -0.3, -2.6, std('#d9dde4', 0.45, 0.55)));
+    const spine = new T.Mesh(new T.BoxGeometry(17, 0.22, 0.5), red); spine.position.set(8.2, 0.72, -2.6); rail.add(spine);
     const clamps = [];
     for (const x of [3, 8, 13]) {
       const hinge = new T.Group(); hinge.position.set(x, 0, -2); rail.add(hinge);
@@ -566,12 +816,13 @@ const Models = (() => {
     }
     const foot = new T.Mesh(new T.CylinderGeometry(1.2, 1.4, 0.6, 16), metal);
     foot.rotation.z = Math.PI / 2; foot.position.set(-0.2, 0, 0); rail.add(foot);
-    // service tower with a swing arm and a warning light on top
+    // service tower with a swing arm and a warning light on top; replaced by NASA's
+    // Mobile Launcher umbilical tower once the embedded models are parsed (see below)
     const tower = new T.Group(); tower.position.set(-6, 1.6, -8.5); g.add(tower);
     const tw = new T.Mesh(new T.BoxGeometry(3.2, 26, 3.2), latMat); tw.position.y = 13; tower.add(tw);
     for (let y = 4; y < 26; y += 5.5) { const deck = new T.Mesh(new T.BoxGeometry(3.8, 0.3, 3.8), metal); deck.position.y = y; tower.add(deck); }
     const cap = new T.Mesh(new T.BoxGeometry(3.8, 1.2, 3.8), red); cap.position.y = 26.4; tower.add(cap);
-    const lamp = new T.Mesh(new T.SphereGeometry(0.45, 12, 8), lightMat); lamp.position.y = 27.4; tower.add(lamp);
+    const lamp = new T.Mesh(new T.SphereGeometry(0.45, 12, 8), lightMat); lamp.position.y = 27.4; g.add(lamp); lamp.position.add(tower.position);
     const antenna = new T.Mesh(new T.CylinderGeometry(0.12, 0.12, 5, 6), metal); antenna.position.y = 29.5; tower.add(antenna);
     const swing = new T.Group(); swing.position.set(1.6, 15, 0); tower.add(swing);
     const sarm = new T.Mesh(new T.BoxGeometry(6, 0.8, 1), latMat); sarm.position.x = 3; swing.add(sarm);
@@ -619,7 +870,46 @@ const Models = (() => {
     [[-22, 1.1, -14, 0.3], [-20, 1.1, -16.5, 0.9], [-21, 3.3, -15.2, 0.1]].forEach(([x, y, z, r]) => { const c = new T.Mesh(new T.BoxGeometry(2.2, 2.2, 2.2), crate); c.position.set(x, y, z); c.rotation.y = r; c.castShadow = true; g.add(c); });
     [[20, -18], [22, -16.5], [19.2, -15.6]].forEach(([x, z]) => { const b = new T.Mesh(new T.CylinderGeometry(0.9, 0.9, 2.6, 14), barrel); b.position.set(x, 1.3, z); b.castShadow = true; g.add(b); });
     g.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
+    onModels(() => {
+      if (!GLB.tower) return;
+      // the umbilical tower stands behind the rail; its crew access arm reaches toward the rocket
+      const lut = GLB.tower.clone(true), S = 9;
+      lut.scale.setScalar(S); lut.rotation.y = Math.PI / 2;
+      lut.position.set(0.5, 1.6 - 0.4767 * S, -2);
+      lut.traverse(o => {
+        if (!o.isMesh) return;
+        o.castShadow = o.receiveShadow = true;
+        // the source is painted as bare metal and turns black without a mirror-like sky: make it painted steel
+        o.material = o.material.clone(); o.material.metalness = 0.35; o.material.roughness = 0.62; o.material.color.setScalar(1.7);
+      });
+      g.add(lut);
+      tower.visible = false;
+      lamp.position.set(0.5 + 0.03 * S, 1.6 + (2.464 - 0.4767) * S + 0.5, -2 - 0.4 * S);
+    });
     return g;
+  }
+  // square steel truss along +X: four chords, diagonal bracing on every face and cross frames
+  function truss(len, size, x0, z, mat) {
+    const h = size / 2, bay = size * 1.1, n = Math.max(1, Math.round(len / bay)), step = len / n;
+    const corners = [[h, h], [h, -h], [-h, -h], [-h, h]];
+    const segs = [];
+    for (const [y, zz] of corners) segs.push([[x0, y, z + zz], [x0 + len, y, z + zz], 0.11]);
+    for (let i = 0; i < n; i++) {
+      const xa = x0 + i * step, xb = xa + step;
+      for (let c = 0; c < 4; c++) {
+        const [ya, za] = corners[c], [yb, zb] = corners[(c + 1) % 4];
+        segs.push([[xa, ya, z + za], [xa, yb, z + zb], 0.06]);
+        segs.push(i % 2 ? [[xa, ya, z + za], [xb, yb, z + zb], 0.05] : [[xa, yb, z + zb], [xb, ya, z + za], 0.05]);
+      }
+    }
+    for (const [y, zz] of corners.slice(0, 2)) segs.push([[x0 + len, y, z + zz], [x0 + len, -y, z + zz], 0.06]);
+    const geo = new T.CylinderGeometry(1, 1, 1, 6, 1);
+    const im = new T.InstancedMesh(geo, mat, segs.length), o = new T.Object3D(), a = new T.Vector3(), b = new T.Vector3();
+    segs.forEach(([p, q, r], i) => {
+      a.fromArray(p); b.fromArray(q); stretchBetween(o, a, b); o.scale.x = o.scale.z = r; o.updateMatrix(); im.setMatrixAt(i, o.matrix);
+    });
+    im.castShadow = true;
+    return im;
   }
 
   // ---------- scenery ----------
@@ -852,7 +1142,7 @@ const Models = (() => {
 
   return {
     TEX, buildTextures, std, glowMat, additive, stretchBetween, mulberry, jitter, FLAME_COLORS,
-    rocket, launchPad, treeParts, mountain, hill, shared, gem, fuelCan, boostRing,
+    rocket, launchPad, onModels, treeParts, mountain, hill, shared, gem, fuelCan, boostRing,
     bird, partyBalloons, weatherBalloon, ufo, drone, zeppelin, rock, meteor, satellite, debris, plasma, planet,
   };
 })();

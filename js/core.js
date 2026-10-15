@@ -191,9 +191,9 @@ const ROCKETS = [
   { id:'sprudel', name:'Sprudel', cost:310, req:0, blurb:'Eine Limoflasche unter Druck. Mehr Tank, mehr Spaß.',
     thrust:1.08, fuel:1.2, drag:0.98, handling:1, lift:1, magnet:1, coin:1, armor:0, turbo:0, can:1,
     look:{ body:'#86dcc6', accent:'#e84a5f', trim:'#ffd166', nose:'blunt', fins:'round', len:.95, w:.95, boosters:0, stripes:1, windows:0, flame:'water' } },
-  { id:'spatz', name:'Spatz', cost:1200, req:2, blurb:'Leicht, flink und erstaunlich ausdauernd.',
+  { id:'spatz', name:'Spatz', cost:1200, req:2, blurb:'Nachbau der Jupiter-C, die 1958 den ersten US-Satelliten trug. Leicht, flink und ausdauernd.',
     thrust:1.16, fuel:1.4, drag:0.96, handling:1.15, lift:1.2, magnet:1, coin:1, armor:0, turbo:0, can:1,
-    look:{ body:'#ffffff', accent:'#3b7ddd', trim:'#ffd54a', nose:'ogive', fins:'swept', len:1, w:.9, boosters:0, stripes:2, windows:1, flame:'warm' } },
+    look:{ model:'jupiterc', fat:1.35, body:'#ffffff', accent:'#3b7ddd', trim:'#ffd54a', nose:'ogive', fins:'swept', len:1.05, w:.9, boosters:0, stripes:2, windows:1, flame:'warm' } },
   { id:'hummel', name:'Hummel', cost:2400, req:3, blurb:'Kurz, dick, unverwüstlich. Bringt eine Schildladung mit.',
     thrust:1.24, fuel:1.6, drag:0.94, handling:1, lift:1, magnet:1, coin:1, armor:1, turbo:0, can:1,
     look:{ body:'#ffcd2e', accent:'#1f1f26', trim:'#fff3c2', nose:'blunt', fins:'round', len:.92, w:1.18, boosters:0, stripes:3, windows:1, flame:'warm' } },
@@ -203,12 +203,12 @@ const ROCKETS = [
   { id:'falke', name:'Falke', cost:9400, req:5, blurb:'Lange Flügel, scharfe Kurven, elegante Gleitflüge.',
     thrust:1.42, fuel:2.0, drag:0.89, handling:1.45, lift:1.9, magnet:1, coin:1, armor:0, turbo:0, can:1,
     look:{ body:'#e9edf3', accent:'#ff6b2c', trim:'#2a2f3a', nose:'ogive', fins:'wing', len:1.15, w:.9, boosters:0, stripes:1, windows:2, flame:'warm' } },
-  { id:'polaris', name:'Polaris', cost:17000, req:6, blurb:'Gitterflossen und ein Schild. Gebaut fürs All.',
+  { id:'polaris', name:'Polaris', cost:17000, req:6, blurb:'Nachbau der Ares I-X. Schlank wie ein Bleistift, mit Schild. Gebaut fürs All.',
     thrust:1.52, fuel:2.2, drag:0.86, handling:1.2, lift:1, magnet:1.1, coin:1.1, armor:1, turbo:0, can:1,
-    look:{ body:'#f4f6fb', accent:'#14203d', trim:'#d9b25a', nose:'cone', fins:'grid', len:1.25, w:.95, boosters:0, stripes:2, windows:1, flame:'warm' } },
-  { id:'titan', name:'Titan', cost:30000, req:7, blurb:'Zwei Booster und doppelte Panzerung.',
+    look:{ model:'ares1b', fat:1.5, body:'#f4f6fb', accent:'#14203d', trim:'#d9b25a', nose:'cone', fins:'grid', len:1.3, w:.95, boosters:0, stripes:2, windows:1, flame:'warm' } },
+  { id:'titan', name:'Titan', cost:30000, req:7, blurb:'Nachbau der Saturn V, die Menschen zum Mond brachte. Fünf Triebwerke, doppelte Panzerung.',
     thrust:1.62, fuel:2.4, drag:0.84, handling:1.1, lift:1, magnet:1.1, coin:1.1, armor:2, turbo:0, can:1,
-    look:{ body:'#cfd5df', accent:'#c0392b', trim:'#6b7480', nose:'ogive', fins:'delta', len:1.3, w:1.05, boosters:2, stripes:2, windows:0, flame:'warm' } },
+    look:{ model:'saturnv', fat:1.3, body:'#cfd5df', accent:'#c0392b', trim:'#6b7480', nose:'ogive', fins:'delta', len:1.45, w:1.05, boosters:2, stripes:2, windows:0, flame:'warm' } },
   { id:'orion', name:'Orion', cost:62000, req:8, blurb:'Goldener Nachbrenner mit einer Extra-Turbozündung.',
     thrust:1.72, fuel:2.6, drag:0.82, handling:1.25, lift:1, magnet:1.15, coin:1.15, armor:1, turbo:1, can:1.2,
     look:{ body:'#1c1f2b', accent:'#ffb23e', trim:'#ffe1a6', nose:'cone', fins:'swept', len:1.22, w:.95, boosters:0, stripes:2, windows:2, flame:'gold' } },
@@ -247,6 +247,8 @@ const ROCKETS = [
     look:{ body:'#ffffff', accent:'#ffd84a', trim:'#9ff3ff', nose:'ogive', fins:'wing', len:1.58, w:1.02, boosters:2, stripes:1, windows:2, flame:'white' } },
 ];
 const ROCKET_BY_ID = Object.fromEntries(ROCKETS.map(r => [r.id, r]));
+// the hull carries the rocket's name, painted lengthwise like the lettering on real launchers
+ROCKETS.forEach(r => { r.look.label = r.name.toUpperCase(); });
 
 // ---------- missions ----------
 const MISSIONS = [
