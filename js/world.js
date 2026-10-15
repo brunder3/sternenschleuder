@@ -494,7 +494,7 @@ const World = (() => {
     aurora.position.y = 700; aurora.renderOrder = -6; bgScene.add(aurora);
     // Earth seen from space and the planets on the way out
     bgSunLight = new T.DirectionalLight(0xffffff, 2.6); bgSunLight.position.copy(sunDir); bgScene.add(bgSunLight);
-    bgScene.add(new T.AmbientLight(0x404a66, 0.35));
+    bgScene.add(new T.AmbientLight(0x404a66, 0.6));
     earth = Models.planet('earth', 1000); earth.visible = false; earth.rotation.set(1.15, 0, 0.35); bgScene.add(earth);
     earthGlow = new T.Sprite(new T.SpriteMaterial({ map: Models.TEX.glow, color: 0x7cc4ff, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false }));
     earthGlow.visible = false; earthGlow.renderOrder = -1; bgScene.add(earthGlow);
@@ -554,7 +554,7 @@ const World = (() => {
     renderer.autoClear = false;
     scene = new T.Scene();
     bgScene = new T.Scene();
-    camera = new T.PerspectiveCamera(60, 1, 0.5, 9000);
+    camera = new T.PerspectiveCamera(60, 1, 1, 9000);   // a nearer near plane would cost depth precision (flicker at the shores)
     bgCamera = new T.PerspectiveCamera(60, 1, 1, 2e6);
     scene.fog = new T.Fog(0xcfe9ff, 600, 3200);
     hemi = new T.HemisphereLight(0xcfe8ff, 0x4a6a3a, 0.35); scene.add(hemi);
@@ -567,9 +567,10 @@ const World = (() => {
     scene.add(sunLight); scene.add(sunLight.target);
     Models.buildTextures();
     terrainMat = Models.TEX.photo ? photoTerrainMaterial() : new T.MeshStandardMaterial({ vertexColors: true, map: Models.TEX.ground, roughness: 0.95, metalness: 0, envMapIntensity: 0.4 });
-    Models.TEX.waterNormal.repeat.set(220, 220);
+    Models.TEX.waterNormal.repeat.set(110, 110);
     water = new T.Mesh(new T.PlaneGeometry(14000, 14000), new T.MeshPhysicalMaterial({ color: 0x15405c, roughness: 0.08, metalness: 0, transparent: true, opacity: 0.93,
-      normalMap: Models.TEX.waterNormal, normalScale: new T.Vector2(0.35, 0.35), envMapIntensity: 0.85, clearcoat: 0.4, clearcoatRoughness: 0.05 }));
+      normalMap: Models.TEX.waterNormal, normalScale: new T.Vector2(0.22, 0.22), envMapIntensity: 0.85, clearcoat: 0.4, clearcoatRoughness: 0.05,
+      polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 4 }));
     water.rotation.x = -Math.PI / 2; water.position.y = 0; water.receiveShadow = true; water.renderOrder = -1; scene.add(water);
     groundMats.push(terrainMat, water.material);
     buildSky();
@@ -674,7 +675,7 @@ const World = (() => {
     setGroundFade(groundFade);
     water.visible = groundVis;
     for (const m of chunks.values()) m.visible = groundVis;
-    if (groundVis) { updateTerrain(cx, cz, false); water.position.set(cx, 0, cz); water.material.normalMap.offset.set(t * 0.011 + cx / 14000 * 220, t * 0.007 - cz / 14000 * 220); }
+    if (groundVis) { updateTerrain(cx, cz, false); water.position.set(cx, 0, cz); water.material.normalMap.offset.set(t * 0.006 + cx / 14000 * 110, t * 0.004 - cz / 14000 * 110); }
     updateDeco(cx, cz, cy, groundVis, t, false);
     for (const h of deco.turbines) h.rotation.x += dt * 1.3;
     updateClouds(cx, cy, false);
@@ -739,14 +740,21 @@ const World = (() => {
     fxAdd.update(dt); fxNorm.update(dt);
   }
   // re-render the sky into the environment map when the view of it has changed noticeably
+  let envPhoto = null;
   function updateEnv(Hu, t) {
-    if (envRT && Math.abs(Math.log((Hu + 300) / (envHu + 300))) < 0.06 && t - envTime < 6 && t >= envTime) return;
+    if (Hu < ZH.jet && Models.TEX.skyCubeReady) {
+      // near the ground the reflections come from the photographed sky, built once, so water and paint stay calm
+      if (!envPhoto) envPhoto = pmrem.fromCubemap(Models.TEX.skyCube);
+      scene.environment = envPhoto.texture; envHu = -1;
+      return;
+    }
+    if (envRT && envHu >= 0 && Math.abs(Math.log((Hu + 300) / (envHu + 300))) < 0.15 && t - envTime < 10 && t >= envTime) return;
     envHu = Hu; envTime = t;
     bgCamera.position.set(0, 0, 0);
     const old = envRT;
     envRT = pmrem.fromScene(bgScene, 0.03, 1, 2e5);
     scene.environment = envRT.texture;
-    if (old) old.dispose();
+    if (old && old !== envRT) old.dispose();
   }
   function render() {
     bgCamera.quaternion.copy(camera.quaternion);
