@@ -12,7 +12,7 @@ Oder `index.html` im Browser öffnen, per Doppelklick. Es gibt keinen Build-Schr
 
 ## Grafik
 
-Himmel, Boden (Gras, Fels, Sand, Erde), Wolken, Wasser, die Milchstraße sowie Erde und Mond aus dem All sind echte Fotos. Sie stecken eingebettet in `js/photos.js`, damit das Spiel auch offline per Doppelklick läuft. Die Münzen sind geprägtes Metall mit Rand und Stern, das den Himmel spiegelt.
+Himmel, Boden (Gras, Fels, Sand, Erde), Wolken, Wasser, die Milchstraße sowie Erde, Mond, Mars, Jupiter und Saturn aus dem All sind echte Fotos. Sie stecken eingebettet in `js/photos.js`, damit das Spiel auch offline per Doppelklick läuft. Die Münzen sind geprägtes Metall mit Rand und Stern, das den Himmel spiegelt.
 
 Auf Computern läuft die volle Grafik mit Bloom (leuchtende Flammen, Sonne und Sterne), Kantenglättung und Spiegelungen des Himmels auf Wasser und Raketenlack. Auf Handys und schwächeren Geräten fällt der Bloom weg, damit das Spiel flüssig bleibt. Mit `?grafik=hoch` oder `?grafik=niedrig` hinter der Adresse lässt sich die Stufe erzwingen.
 
@@ -59,4 +59,5 @@ Weil `js/core.js` ohne Browser auskommt, lässt sich das Balancing mit Node simu
 
 - Himmel (Skybox), Gras, Fels, Sand, Erde, Milchstraße und Wasserwellen: [Babylon.js Assets](https://github.com/BabylonJS/Assets), Lizenz [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 - Erde, Wolken der Erde und Mond: NASA-Aufnahmen aus den Beispielen von [three.js](https://github.com/mrdoob/three.js) (MIT-Lizenz)
+- Mars, Jupiter und Saturn: [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources), gemeinfrei
 - Quellwolke: [Poly Haven](https://polyhaven.com) über [@pmndrs/assets](https://github.com/pmndrs/assets), CC0

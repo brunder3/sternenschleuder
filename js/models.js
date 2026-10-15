@@ -362,9 +362,10 @@ const Models = (() => {
       milkyway: photo('milkyway'), earthClouds: photo('earthClouds', false), cloud: photo('cloud'),
     };
     TEX.earth = photo('earth'); TEX.moon = photo('moon');
+    if (PHOTOS.mars) { TEX.mars = photo('mars'); TEX.jupiter = photo('jupiter'); TEX.saturn = photo('saturn'); }
     TEX.waterNormal = photo('waterNormal', false, true);
     TEX.clouds = [TEX.photo.cloud];
-    TEX.skyCube = new T.CubeTextureLoader().load(['sky_px', 'sky_nx', 'sky_py', 'sky_ny', 'sky_pz', 'sky_nz'].map(k => PHOTOS[k]));
+    TEX.skyCube = new T.CubeTextureLoader().load(['sky_px', 'sky_nx', 'sky_py', 'sky_ny', 'sky_pz', 'sky_nz'].map(k => PHOTOS[k]), () => { TEX.skyCubeReady = true; });
     TEX.skyCube.colorSpace = T.SRGBColorSpace;
   }
 
@@ -408,6 +409,9 @@ const Models = (() => {
     const darkMetal = std('#3a3f4a', 0.35, 0.8, { side: T.DoubleSide });
     // body and nose
     inner.add(new T.Mesh(lathe([[R * 0.78, y0], [R * 0.96, y0 + L * 0.025], [R, y0 + L * 0.06], [R, yB]]), bodyMat));
+    // base plate: the hull is a lathe that is open at the bottom; close it so it is not see-through from below
+    const base = new T.Mesh(new T.CircleGeometry(R * 0.79, 32), darkMetal);
+    base.rotation.x = Math.PI / 2; base.position.y = y0 + 0.001; inner.add(base);
     inner.add(new T.Mesh(lathe(noseProfile(look.nose, R, yB, noseLen)), accMat));
     // stripes
     const ring = (y, h, mat) => { const m = new T.Mesh(new T.CylinderGeometry(R * 1.012, R * 1.012, h, 32, 1, true), mat); m.position.y = y; inner.add(m); };
@@ -481,6 +485,8 @@ const Models = (() => {
         const br = R * 0.48, bl = L * 0.55, bx = s * R * 1.42;
         const b = new T.Mesh(lathe([[br * 0.8, 0], [br, bl * 0.06], [br, bl * 0.8], ...noseProfile('ogive', br, bl * 0.8, bl * 0.2).slice(1)], 20), trimMat);
         b.position.set(bx, y0 + L * 0.02, 0); inner.add(b);
+        const bb = new T.Mesh(new T.CircleGeometry(br * 0.81, 20), darkMetal);
+        bb.rotation.x = Math.PI / 2; bb.position.set(bx, y0 + L * 0.02 + 0.001, 0); inner.add(bb);
         const bn = new T.Mesh(new T.CylinderGeometry(br * 0.55, br * 0.8, L * 0.06, 16, 1, true), darkMetal);
         bn.position.set(bx, y0 - L * 0.01, 0); inner.add(bn);
         const strap = new T.Mesh(new T.BoxGeometry(R * 0.9, L * 0.03, br * 0.5), accMat);
@@ -660,7 +666,7 @@ const Models = (() => {
     SHARED.coinGeo = coin.rotateZ(Math.PI / 2);   // axis along x: the face looks at the chase camera
     // polished metal reflects the sky; a faint glow keeps coins readable in shadow and in space
     const metal = (color, glow, rough) => new T.MeshStandardMaterial({ color, metalness: 1, roughness: rough, normalMap: TEX.coinNormal, normalScale: new T.Vector2(1.1, 1.1), emissive: glow, emissiveIntensity: 0.32, envMapIntensity: 1.6 });
-    SHARED.coinMats = [metal('#d9864e', '#7a3a12', 0.32), metal('#e4e9f0', '#6a7690', 0.24), metal('#ffcb3d', '#a86a00', 0.26)];
+    SHARED.coinMats = [metal('#e6a55c', '#8a4c18', 0.3), metal('#e4e9f0', '#6a7690', 0.24), metal('#ffcb3d', '#a86a00', 0.26)];
     SHARED.gemGeo = new T.OctahedronGeometry(1.25, 0).scale(0.8, 1.25, 0.8);
     SHARED.ready = true;
     return SHARED;
