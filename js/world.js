@@ -378,7 +378,7 @@ const World = (() => {
       vertexShader: 'attribute float psize; attribute vec4 pcolor; varying vec4 vColor; uniform float scale;\n' +
         'void main(){ vColor = pcolor; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = psize * scale / max(0.1, -mv.z); gl_Position = projectionMatrix * mv; }',
       fragmentShader: 'uniform sampler2D map; varying vec4 vColor;\n' +
-        'void main(){ vec4 t = texture2D(map, gl_PointCoord); gl_FragColor = vec4(pow(vColor.rgb, vec3(2.2)), vColor.a * t.a);\n' +
+        'void main(){ vec4 t = texture2D(map, gl_PointCoord); gl_FragColor = vec4(pow(max(vColor.rgb, 0.0), vec3(2.2)), vColor.a * t.a);\n' +
         '  #include <colorspace_fragment>\n' +
         '}',
       transparent: true, depthWrite: false, blending,
@@ -436,7 +436,7 @@ const World = (() => {
         '  float e = asin(clamp(y, -1.0, 1.0)) + dip;',
         '  float band = e >= 0.0 ? exp(-e / limbW) : exp(e / (limbW * 0.18));',
         '  vec3 fdir = normalize(vec3(dir.x, 0.0001, dir.z)), sflat = normalize(vec3(sunDir.x, 0.0001, sunDir.z));',
-        '  float toSun = 0.5 + 0.5 * dot(fdir, sflat);',
+        '  float toSun = clamp(0.5 + 0.5 * dot(fdir, sflat), 0.0, 1.0);',                 // rounding can dip below 0, and pow() of that is NaN
         '  vec3 air = mix(vec3(0.16, 0.36, 0.86), vec3(0.42, 0.68, 1.0), toSun) * band + vec3(1.0, 0.62, 0.36) * pow(toSun, 6.0) * band * band * 0.35;',
         '  vec3 above = mix(top, vec3(0.004, 0.006, 0.02), 0.6);',
         '  c = mix(c, above * (1.0 - band) + air, limb);',
@@ -610,6 +610,11 @@ const World = (() => {
     const main = new T.RenderPass(scene, camera); main.clear = false; main.clearDepth = true;
     composer.addPass(main);
     bloom = new T.UnrealBloomPass(new T.Vector2(256, 256), 0.32, 0.45, 1.0);
+    // one invalid pixel (NaN, or a half float that overflowed to infinity) would be blurred by the bloom
+    // into a big black blotch on some graphics chips: clean the bloom's input so a bad pixel stays a pixel
+    const hp = bloom.materialHighPassFilter;
+    hp.fragmentShader = hp.fragmentShader.replace(/vec4 texel = texture2D\( ?tDiffuse, ?vUv ?\);/, m => m +
+      '\n#if __VERSION__ >= 300\nif (any(isnan(texel)) || any(isinf(texel))) texel = vec4(0.0);\n#endif\ntexel = clamp(texel, 0.0, 64.0);');
     composer.addPass(bloom);
     composer.addPass(new T.OutputPass());
   }
