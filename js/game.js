@@ -106,6 +106,11 @@
       if (G.state === 'flight') togglePause();
       else if (G.overlay === 'hangar') closeHangar();
       else if (G.overlay === 'help') closeHelp();
+      else if (G.overlay === 'rebirth') closeRebirth();
+      else if (G.overlay === 'pets') closePets();
+      else if (G.overlay === 'login') closeLogin();
+      else if (G.overlay === 'gifts') closeGifts();
+      else if (G.overlay === 'wheel') closeWheel();
       else if (G.state === 'charge') toMenu();
       return;
     }
@@ -177,6 +182,8 @@
     G.angle = PHYS.LAUNCH_DEFAULT;
     World.resetClouds(0, 40);
     showScreen('menu');
+    refreshPetMeshes();
+    maybeLoginPopup();
   }
   function enterCharge() {
     Sfx.click();
@@ -261,6 +268,10 @@
     const zi = zoneIndexAt(Hh);
     if (zi > G.lastZone) {
       G.lastZone = zi;
+      if (zi > save.life.bestZone) {
+        save.life.bestZone = zi;
+        if (zi === rebirthZone(save.rebirths)) toast('Rebirth bereit!', '↻', true);
+      }
       if (zi > save.bestZone) { save.bestZone = zi; showBanner('Neue Zone entdeckt', ZONES[zi].name, ZONES[zi].desc); Sfx.zone(); }
       else if (zi >= 2) showBanner(fmtAlt(ZONES[zi].A), ZONES[zi].name, '');
     }
@@ -335,11 +346,15 @@
     s.bestRunCoins = Math.max(s.bestRunCoins, run.coins); s.bestRunRings = Math.max(s.bestRunRings, run.rings);
     s.bestRunBounces = Math.max(s.bestRunBounces, run.bounces);
     if (run.fuelUsed < 0.001 && run.turbos === 0) s.bestNoBoost = Math.max(s.bestNoBoost, run.maxA);
+    if (run.perfect) s.perfects++;
+    s.rocketBest[save.rocket] = Math.max(s.rocketBest[save.rocket] || 0, run.maxA);
+    updateDaily(run, total);
     const firstWin = reason === 'win' && !save.won;
     if (reason === 'win') save.won = true;
+    const lv = addXp(run);
     checkMissions(false);
     persist();
-    showResults({ run, reason, heightBonus, recordBonus, winBonus, collected, total, isRecord, newly: run.done, firstWin });
+    showResults({ run, reason, heightBonus, recordBonus, winBonus, collected, total, isRecord, newly: run.done, firstWin, lv });
   }
 
   // ================= objects =================
@@ -977,6 +992,11 @@
       case 'noBoost': return s.bestNoBoost;
       case 'rockets': return save.rockets.length;
       case 'maxed': return maxedCount();
+      case 'rebirths': return save.rebirths;
+      case 'indexed': return Object.keys(save.index).length;
+      case 'mythics': return PETS.filter(p => p.rarity === 4 && save.index[p.id]).length;
+      case 'level': return save.level;
+      case 'rocketAlt': return Math.max(s.rocketBest[m.rocket] || 0, run && save.rocket === m.rocket ? run.maxA : 0);
       default: return (s[m.t] || 0) + (run && run[m.t] ? run[m.t] : 0);
     }
   }
@@ -988,13 +1008,59 @@
       if (missionDone(m, live)) {
         save.seen[m.id] = 1; newly.push(m);
         if (G.run) G.run.done.push(m);
-        if (G.state !== 'results') toast('Mission erfüllt: ' + m.text, '+' + fmtNum(m.reward), true);
+        if (G.state !== 'results') toast('Quest erfüllt: ' + m.text, '+' + fmtNum(m.reward), true);
       }
     }
     if (newly.length) { Sfx.mission(); updateBadges(); }
     return newly;
   }
-  function claimableCount() { return MISSIONS.filter(m => !save.claimed[m.id] && missionDone(m, false)).length; }
+  function claimableCount() {
+    ensureDaily();
+    const d = save.daily, daily = d.quests.filter(q => !q.claimed && dailyDone(q)).length;
+    const bonus = !d.bonusClaimed && d.quests.every(q => q.claimed) ? 1 : 0;
+    return MISSIONS.filter(m => !save.claimed[m.id] && missionDone(m, false)).length + daily + bonus;
+  }
+  // ---------- daily quests ----------
+  function ensureDaily() {
+    const day = dayKey();
+    if (!save.daily || save.daily.day !== day) { save.daily = makeDaily(save, day); persist(); }
+  }
+  function updateDaily(run, total) {
+    ensureDaily();
+    let fresh = false;
+    for (const q of save.daily.quests) {
+      if (q.claimed) continue;
+      const was = dailyDone(q);
+      if (q.k === 'flights') q.prog++;
+      else if (q.k === 'coins') q.prog += total;
+      else if (q.k === 'rings') q.prog += run.rings;
+      else if (q.k === 'cans') q.prog += run.cans;
+      else if (q.k === 'perfects') q.prog += run.perfect ? 1 : 0;
+      else if (q.k === 'balloons') q.prog += run.balloons;
+      else if (q.k === 'zone') q.prog = Math.max(q.prog, zoneIndexAt(run.maxH));
+      if (!was && dailyDone(q)) fresh = true;
+    }
+    if (fresh) { toast('Tages-Quest erfüllt!', '★', true); Sfx.mission(); }
+  }
+  function claimDaily(i) {
+    ensureDaily();
+    const q = save.daily.quests[i];
+    if (!q || q.claimed || !dailyDone(q)) return;
+    q.claimed = true; save.coins += q.reward; save.stats.earned += q.reward;
+    persist(); Sfx.buy(); updateBadges(); updateCoins();
+  }
+  function claimDailyBonus() {
+    const d = save.daily;
+    if (!d || d.bonusClaimed || !d.quests.every(q => q.claimed)) return;
+    d.bonusClaimed = true; save.coins += d.bonus; save.stats.earned += d.bonus;
+    persist(); Sfx.perfect(); updateBadges(); updateCoins();
+    toast('Tagesbonus abgeholt!', '+' + fmtNum(d.bonus), true);
+  }
+  function untilMidnight() {
+    const n = new Date(), m = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1);
+    const min = Math.max(1, Math.round((m - n) / 60000));
+    return min >= 60 ? `${Math.floor(min / 60)} Std. ${min % 60} Min.` : `${min} Min.`;
+  }
   function claimMission(id) {
     const m = MISSIONS.find(x => x.id === id);
     if (!m || save.claimed[id] || !missionDone(m, false)) return;
@@ -1058,7 +1124,11 @@
     return true;
   }
   function updateCoins() { const c = fmtNum(save.coins); $('mCoins').textContent = c; $('hgCoins').textContent = c; $('cCoins').textContent = c; }
-  function updateBadges() { const n = claimableCount(); for (const id of ['mBadge', 'mBadge2']) { const b = $(id); b.hidden = n === 0; b.textContent = n; } }
+  function updateBadges() {
+    const n = claimableCount();
+    for (const id of ['mBadge', 'mBadge2']) { const b = $(id); b.hidden = n === 0; b.textContent = n; }
+    $('rbBadge').hidden = !canRebirth(save);
+  }
   function nextGoal() {
     const z = save.bestZone;
     if (z >= ZONES.length - 1) return save.won ? 'Alles entdeckt. Jag deine Rekorde!' : 'Ziel: Andromeda';
@@ -1070,6 +1140,9 @@
     $('mBest').textContent = save.stats.bestA > 0 ? fmtAlt(save.stats.bestA) : '–';
     $('mGoal').textContent = nextGoal();
     $('btnSound').setAttribute('aria-pressed', save.settings.sound ? 'true' : 'false');
+    updateMetaHud();
+    $('mMult').hidden = save.rebirths === 0;
+    $('mMult').textContent = '×' + deNum(rebirthMult(save.rebirths), 1);
     const st = computeStats(save);
     $('qcards').innerHTML = QUICK.map(q => {
       const u = UPG[q.id], L = save.up[q.id] || 0, maxed = L >= u.max, cost = maxed ? 0 : upgradeCost(u, L);
@@ -1096,7 +1169,8 @@
   function reasonText(r) { return { land: 'Gelandet', crash: 'Bruchlandung', splash: 'Platsch! Wasserlandung', skip: 'Zurück zur Erde', abort: 'Flug beendet', win: 'Andromeda erreicht!' }[r] || 'Flug beendet'; }
   function bestTip() {
     const nr = ROCKETS.find(R => !save.rockets.includes(R.id));
-    if (nr && nr.req <= save.bestZone && nr.cost <= save.coins) return `Du kannst dir die Rakete <b>${nr.name}</b> leisten. Schau im Hangar unter Raketen vorbei.`;
+    if (nr && nr.rb > save.rebirths && canRebirth(save)) return `Die Rakete <b>${nr.name}</b> gibt es erst ab ${nr.rb} Rebirth${nr.rb > 1 ? 's' : ''}. Du bist bereit für den nächsten <b>Rebirth</b>!`;
+    if (nr && nr.req <= save.bestZone && nr.rb <= save.rebirths && nr.cost <= save.coins) return `Du kannst dir die Rakete <b>${nr.name}</b> leisten. Schau im Hangar unter Raketen vorbei.`;
     const opts = UPGRADES.filter(u => (save.up[u.id] || 0) < u.max).map(u => ({ u, c: upgradeCost(u, save.up[u.id] || 0) })).filter(x => x.c <= save.coins);
     if (opts.length) {
       const pri = ['engine', 'tank', 'sling', 'aero', 'value'];
@@ -1104,7 +1178,9 @@
       return `Bereit für ein Upgrade: <b>${opts[0].u.name}</b> kostet ${fmtNum(opts[0].c)} Münzen.`;
     }
     const claim = claimableCount();
-    if (claim) return `Du hast <b>${claim}</b> erfüllte Mission${claim > 1 ? 'en' : ''}. Hol dir die Belohnung im Hangar ab.`;
+    if (claim) return `Du hast <b>${claim}</b> erfüllte Quest${claim > 1 ? 's' : ''}. Hol dir die Belohnung unter Quests ab.`;
+    if (canRebirth(save)) return `Du kannst einen <b>Rebirth</b> machen: Danach bekommst du für immer ×${deNum(rebirthMult(save.rebirths + 1), 1)} Münzen.`;
+    if (nr && nr.rb > save.rebirths) return `Die Rakete <b>${nr.name}</b> gibt es ab ${nr.rb} Rebirth${nr.rb > 1 ? 's' : ''}. Erreiche ${ZONES[rebirthZone(save.rebirths)].name} für den nächsten Rebirth.`;
     if (nr && nr.req > save.bestZone) return `Erreiche <b>${ZONES[nr.req].name}</b>, um die Rakete ${nr.name} freizuschalten.`;
     return pick(['Zünde, wenn der Balken im Feld „Perfekt“ steht: Das gibt mehr Tempo und 10 % mehr Münzen.', 'Boost-Ringe geben Tempo und ein bisschen Treibstoff zurück.', 'Ballons platzen lassen gibt Auftrieb und Münzen.', 'Zünde den Turbo, während du Schub gibst: Er schiebt zusätzlich und kostet keinen Treibstoff.']);
   }
@@ -1135,10 +1211,11 @@
         <div><b>${run.rings}</b><span>Ringe</span></div>
         <div><b>${run.cans}</b><span>Kanister</span></div>
       </div>
-      ${d.newly.length ? `<div class="done-list">${shown.map(() => '<div>✓ <span></span></div>').join('')}${more > 0 ? `<div class="muted">und ${more} weitere – Belohnungen im Hangar unter Missionen</div>` : ''}</div>` : ''}
+      <div class="xp-line"><span class="lvl-pill"><b>${save.level}</b><i><u style="width:${(clamp(save.xp / xpForLevel(save.level), 0, 1) * 100).toFixed(1)}%"></u></i></span><span>+${d.lv.xp} XP${d.lv.ups.length ? ` · <b>Level ${d.lv.ups[d.lv.ups.length - 1].level}!</b> ${d.lv.ups.map(u => u.text).join(', ')}` : ''}</span></div>
+      ${d.newly.length ? `<div class="done-list">${shown.map(() => '<div>✓ <span></span></div>').join('')}${more > 0 ? `<div class="muted">und ${more} weitere – Belohnungen unter Quests</div>` : ''}</div>` : ''}
       <div class="tipbox">${bestTip()}</div>
       <div class="row stretch"><button class="btn" id="resHangar">Hangar</button><button class="btn primary" id="resAgain">Weiter</button></div>`;
-    sheet.querySelectorAll('.done-list span').forEach((s, i) => { s.textContent = 'Mission erfüllt: ' + shown[i].text; });
+    sheet.querySelectorAll('.done-list span').forEach((s, i) => { s.textContent = 'Quest erfüllt: ' + shown[i].text; });
     $('results').hidden = false; G.overlay = 'results';
     $('resAgain').onclick = () => { Sfx.click(); closeResults(); if (d.firstWin) showVictory(); };
     $('resHangar').onclick = () => { Sfx.click(); closeResults(); openHangar('upgrades'); if (d.firstWin) showVictory(); };
@@ -1217,11 +1294,11 @@
         </div>`;
       }).join('') + '</div>';
     } else if (hangarTab === 'rockets') {
-      $('hgFoot').textContent = 'Neue Raketen schaltest du frei, indem du höhere Zonen erreichst.';
+      $('hgFoot').textContent = 'Neue Raketen schaltest du mit höheren Zonen frei, die stärksten zusätzlich mit Rebirths.';
       const maxT = ROCKETS[ROCKETS.length - 1];
       const bar = (v, m) => `style="--w:${clamp(v / m * 100, 4, 100).toFixed(0)}%"`;
       body.innerHTML = '<div class="grid">' + ROCKETS.map(R => {
-        const own = save.rockets.includes(R.id), sel = save.rocket === R.id, unlocked = R.req <= save.bestZone;
+        const own = save.rockets.includes(R.id), sel = save.rocket === R.id, unlocked = R.req <= save.bestZone && R.rb <= save.rebirths;
         const perks = [];
         if (R.armor) perks.push(`+${R.armor} Schild`);
         if (R.turbo) perks.push(`+${R.turbo} Turbo`);
@@ -1232,6 +1309,7 @@
         let btn;
         if (sel) btn = '<button class="btn" disabled>Ausgewählt</button>';
         else if (own) btn = `<button class="btn" data-select="${R.id}">Auswählen</button>`;
+        else if (R.rb > save.rebirths) btn = `<button class="btn" disabled>Ab ${R.rb} Rebirth${R.rb > 1 ? 's' : ''}</button>`;
         else if (!unlocked) btn = `<button class="btn" disabled>Erreiche ${ZONES[R.req].name}</button>`;
         else btn = `<button class="btn${R.cost <= save.coins ? ' primary' : ''}" data-rocket="${R.id}" ${R.cost <= save.coins ? '' : 'disabled'}><i class="coin-ico"></i>${fmtNum(R.cost)}</button>`;
         return `<div class="card${sel ? ' sel' : ''}${!own && !unlocked ? ' locked' : ''}">
@@ -1245,17 +1323,31 @@
       }).join('') + '</div>';
       body.querySelectorAll('canvas[data-rk]').forEach(c => {
         const R = ROCKET_BY_ID[c.dataset.rk];
-        try { c.getContext('2d').drawImage(rocketPreview(R, !save.rockets.includes(R.id) && R.req > save.bestZone), 0, 0); } catch (e) { /* preview unavailable */ }
+        try { c.getContext('2d').drawImage(rocketPreview(R, !save.rockets.includes(R.id) && (R.req > save.bestZone || R.rb > save.rebirths)), 0, 0); } catch (e) { /* preview unavailable */ }
       });
     } else if (hangarTab === 'missions') {
-      $('hgFoot').textContent = `${Object.keys(save.claimed).length} von ${MISSIONS.length} Missionen abgeschlossen.`;
+      ensureDaily();
+      const d = save.daily;
+      $('hgFoot').textContent = `${Object.keys(save.claimed).length} von ${MISSIONS.length} Quests abgeschlossen.`;
+      const reward = (v) => `<span class="reward"><i class="coin-ico"></i>${fmtNum(v)}</span>`;
+      const daily = d.quests.map((q, i) => {
+        const done = dailyDone(q), pct = clamp(q.prog / q.goal, 0, 1) * 100;
+        const prog = q.k === 'zone' ? (done ? 'Geschafft' : `Bisher: ${ZONES[q.prog] ? ZONES[q.prog].name : '–'}`) : `${fmtNum(Math.min(q.prog, q.goal))} / ${fmtNum(q.goal)}`;
+        const btn = q.claimed ? '<span class="tag-done">Erledigt</span>' : done ? `<button class="btn primary" data-dclaim="${i}">Abholen</button>` : reward(q.reward);
+        return `<div class="mission${q.claimed ? ' claimed' : done ? ' claimable' : ''}"><div class="m-text">${dailyText(q)}</div>${btn}<div class="m-prog"><div class="lvl-bar"><i style="width:${pct.toFixed(1)}%"></i></div><span>${prog}</span></div></div>`;
+      }).join('');
+      const all = d.quests.every(q => q.claimed);
+      const chest = `<div class="mission chest${d.bonusClaimed ? ' claimed' : all ? ' claimable' : ''}"><div class="m-text">Tagesbonus: alle drei Quests abholen</div>${d.bonusClaimed ? '<span class="tag-done">Erledigt</span>' : all ? '<button class="btn gold" data-dbonus="1">Bonus holen</button>' : reward(d.bonus)}</div>`;
       const groups = {};
       for (const m of MISSIONS) (groups[m.g] = groups[m.g] || []).push(m);
-      body.innerHTML = Object.entries(groups).map(([g, list]) => `<div class="m-group">${g}</div><div class="m-list">` + list.map(m => {
+      body.innerHTML = `<section class="daily-box"><div class="daily-head"><h3>Tages-Quests</h3><span class="timer">Neue Quests in ${untilMidnight()}</span></div><div class="m-list">${daily}${chest}</div></section>` +
+        Object.entries(groups).map(([g, list]) => `<div class="m-group">${g}</div><div class="m-list">` + list.map(m => {
         const v = missionValue(m, false), done = v >= m.goal, claimed = !!save.claimed[m.id];
-        const pct = clamp(m.t === 'alt' || m.t === 'speed' || m.t === 'runCoins' ? Math.log10(1 + v) / Math.log10(1 + m.goal) : v / m.goal, 0, 1) * 100;
-        const prog = m.t === 'alt' ? `${fmtAlt(Math.min(v, m.goal))} / ${fmtAlt(m.goal)}` : m.t === 'speed' ? `${fmtSpeed(Math.min(v, m.goal))} / ${fmtSpeed(m.goal)}` : `${fmtNum(Math.min(v, m.goal))} / ${fmtNum(m.goal)}`;
-        const btn = claimed ? '<span class="up-lvl">Erledigt</span>' : done ? `<button class="btn primary" data-claim="${m.id}"><i class="coin-ico"></i>${fmtNum(m.reward)}</button>` : `<span class="up-lvl" style="display:inline-flex;gap:6px;align-items:center"><i class="coin-ico" style="width:14px;height:14px"></i>${fmtNum(m.reward)}</span>`;
+        const logish = m.t === 'alt' || m.t === 'speed' || m.t === 'runCoins' || m.t === 'rocketAlt' || m.t === 'earned';
+        const pct = clamp(logish ? Math.log10(1 + v) / Math.log10(1 + m.goal) : v / m.goal, 0, 1) * 100;
+        const prog = m.t === 'alt' || m.t === 'rocketAlt' ? `${fmtAlt(Math.min(v, m.goal))} / ${fmtAlt(m.goal)}` : m.t === 'speed' ? `${fmtSpeed(Math.min(v, m.goal))} / ${fmtSpeed(m.goal)}`
+          : m.t === 'playTime' ? `${Math.floor(Math.min(v, m.goal) / 60)} / ${m.goal / 60} min` : `${fmtNum(Math.min(v, m.goal))} / ${fmtNum(m.goal)}`;
+        const btn = claimed ? '<span class="tag-done">Erledigt</span>' : done ? `<button class="btn primary" data-claim="${m.id}"><i class="coin-ico"></i>${fmtNum(m.reward)}</button>` : reward(m.reward);
         return `<div class="mission${claimed ? ' claimed' : done ? ' claimable' : ''}"><div class="m-text">${m.text}</div>${btn}<div class="m-prog"><div class="lvl-bar"><i style="width:${pct.toFixed(1)}%"></i></div><span>${prog}</span></div></div>`;
       }).join('') + '</div>').join('');
     } else {
@@ -1284,7 +1376,7 @@
       if (buyUpgrade(b.dataset.buy)) { renderHangar(); const nb = document.querySelector(`[data-buy="${b.dataset.buy}"]`); if (nb && !nb.disabled) nb.focus({ preventScroll: true }); }
     } else if (b.dataset.rocket) {
       const R = ROCKET_BY_ID[b.dataset.rocket];
-      if (!R || save.rockets.includes(R.id) || R.cost > save.coins || R.req > save.bestZone) { Sfx.deny(); return; }
+      if (!R || save.rockets.includes(R.id) || R.cost > save.coins || R.req > save.bestZone || R.rb > save.rebirths) { Sfx.deny(); return; }
       save.coins -= R.cost; save.rockets.push(R.id); save.rocket = R.id;
       persist(); Sfx.buy(); checkMissions(false); renderHangar();
       toast(R.name + ' ist startklar!', '', true);
@@ -1292,9 +1384,413 @@
       save.rocket = b.dataset.select; persist(); Sfx.click(); renderHangar();
     } else if (b.dataset.claim) {
       claimMission(b.dataset.claim); renderHangar();
+    } else if (b.dataset.dclaim) {
+      claimDaily(+b.dataset.dclaim); renderHangar();
+    } else if (b.dataset.dbonus) {
+      claimDailyBonus(); renderHangar();
     }
   });
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => { Sfx.click(); hangarTab = t.dataset.tab; renderHangar(); $('tabBody').scrollTop = 0; }));
+
+  // ---------- rebirth ----------
+  const REBIRTH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/><path d="M12 8l1.2 2.5 2.8.4-2 2 .5 2.8-2.5-1.3-2.5 1.3.5-2.8-2-2 2.8-.4z" fill="currentColor" stroke-width="1"/></svg>';
+  function openRebirth() { $('rebirth').hidden = false; G.overlay = 'rebirth'; renderRebirth(false); }
+  function closeRebirth() { $('rebirth').hidden = true; G.overlay = null; if (G.state === 'menu') updateMenu(); }
+  function renderRebirth(confirm) {
+    const n = save.rebirths, z = rebirthZone(n), ready = canRebirth(save);
+    const pct = clamp((save.life.bestZone + 1) / (z + 1), 0, 1) * 100;
+    const unlocks = ROCKETS.filter(R => R.rb === n + 1).map(R => R.name);
+    const unlockText = unlocks.length ? `Schaltet frei: Rakete${unlocks.length > 1 ? 'n' : ''} <b>${unlocks.join(' und ')}</b>` : '';
+    $('rebirthBody').innerHTML = `
+      <div class="rb-top"><div class="rb-icon">${REBIRTH_SVG}</div><div><h2>Rebirth</h2><div class="rb-count">${n === 0 ? 'Noch kein Rebirth' : n === 1 ? '1 Rebirth' : n + ' Rebirths'}</div></div></div>
+      <div class="rb-mult"><div><span>Münzen jetzt</span><b>×${deNum(rebirthMult(n), 1)}</b></div><div class="rb-arrow">➜</div><div class="next"><span>Nach dem Rebirth</span><b>×${deNum(rebirthMult(n + 1), 1)}</b></div></div>
+      <div class="rb-req${ready ? ' ok' : ''}">
+        <div>Ziel für diesen Rebirth: <b>${ZONES[z].name}</b> (${fmtAlt(ZONES[z].A)})</div>
+        <div class="lvl-bar"><i style="width:${pct.toFixed(1)}%"></i></div>
+        <div class="muted">${ready ? 'Geschafft! Du kannst jetzt neu starten.' : 'Seit dem letzten Rebirth erreicht: ' + ZONES[save.life.bestZone].name}</div>
+      </div>
+      <div class="rb-lists">
+        <div class="lose"><b>Wird zurückgesetzt</b><ul><li>Deine Münzen (${fmtNum(save.coins)})</li><li>Alle Upgrades</li><li>Alle Raketen (zurück zur Funke)</li></ul></div>
+        <div class="keep"><b>Bleibt dir</b><ul><li>Rekorde und Logbuch</li><li>Quests und Belohnungen</li><li>Der Münz-Bonus für immer</li></ul></div>
+      </div>
+      ${unlockText ? `<div class="rb-unlock">${unlockText}</div>` : ''}
+      ${confirm ? '<div class="rb-confirm"><b>Wirklich neu starten?</b><div class="row stretch"><button class="btn" id="rbNo">Abbrechen</button><button class="btn gold" id="rbYes">Ja, Rebirth!</button></div></div>'
+        : `<button class="btn gold big" id="rbGo" ${ready ? '' : 'disabled'}>${ready ? 'Rebirth' : 'Noch nicht bereit'}</button>`}`;
+    if (confirm) { $('rbNo').onclick = () => { Sfx.click(); renderRebirth(false); }; $('rbYes').onclick = doRebirth; }
+    else $('rbGo').onclick = () => { Sfx.click(); renderRebirth(true); };
+  }
+  function doRebirth() {
+    if (!applyRebirth(save)) { Sfx.deny(); return; }
+    stats = computeStats(save);
+    ensureDaily(); checkMissions(false); persist();
+    $('rebirth').hidden = true; G.overlay = null;
+    toMenu();
+    G.flash = 0.7; G.flashRgb = [255, 214, 90];
+    Sfx.perfect();
+    showBanner('Rebirth ' + save.rebirths, 'Münzen ×' + deNum(rebirthMult(save.rebirths), 1), 'Alles auf Anfang, aber jeder Flug bringt jetzt mehr.');
+  }
+  $('btnRebirth').onclick = () => { Sfx.init(); Sfx.click(); openRebirth(); };
+  $('btnPets').onclick = () => { Sfx.init(); Sfx.click(); openPets(save.pets.length ? petTab : 'eggs'); };
+  $('btnPetsX').onclick = () => { Sfx.click(); closePets(); };
+  $('btnGifts').onclick = () => { Sfx.init(); Sfx.click(); openGifts(); };
+  $('btnGiftsX').onclick = () => { Sfx.click(); closeGifts(); };
+  $('btnWheel').onclick = () => { Sfx.init(); Sfx.click(); openWheel(); };
+  $('btnWheelX').onclick = () => { Sfx.click(); closeWheel(); };
+  $('btnLogin').onclick = () => { Sfx.init(); Sfx.click(); openLogin(); };
+  $('btnLoginX').onclick = () => { Sfx.click(); closeLogin(); };
+  $('giftBody').addEventListener('click', e => {
+    const b = e.target.closest('[data-gift]');
+    if (!b) return;
+    const i = +b.dataset.gift;
+    if (!giftReady(i)) return;
+    sess.gifts[i] = 1;
+    Sfx.perfect();
+    toast('Geschenk: ' + grant(GIFTS[i]), '★', true);
+    renderGifts();
+  });
+  $('btnRebirthX').onclick = () => { Sfx.click(); closeRebirth(); };
+  $('btnHangarX').onclick = () => { Sfx.click(); closeHangar(); };
+
+  // ================= companions, rewards, level =================
+  // the session counts play time for the gifts; boosts tick down while the game is open
+  const sess = { sec: 0, gifts: {}, loginShown: false, saveT: 0, hudT: 0 };
+  function fmtClock(sec) {
+    sec = Math.max(0, Math.ceil(sec));
+    const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+    return h ? `${h}:${String(m).padStart(2, '0')} h` : `${m}:${String(s).padStart(2, '0')}`;
+  }
+  const luckNow = () => boostActive(save, 'luck') ? 2 : 1;
+  function rewardLabel(rw) {
+    if (rw.kind === 'coins') return `${fmtNum(coinPack(save, rw.k))} Münzen`;
+    if (rw.kind === 'boost') return `${rw.min || rw.min2} Min. ${BOOSTS[rw.boost].name}`;
+    return rw.luck > 1 ? `Glücks-Ei (${rw.luck}× Glück)` : 'Gratis-Ei';
+  }
+  // pays out a reward from the calendar, a gift, the wheel, a code or a level; returns what it was
+  function grant(rw) {
+    let text = rewardLabel(rw);
+    if (rw.kind === 'coins') { const c = coinPack(save, rw.k); save.coins += c; save.stats.earned += c; }
+    else if (rw.kind === 'boost') { save.boosts[rw.boost] = (save.boosts[rw.boost] || 0) + (rw.min || rw.min2) * 60; }
+    else {
+      const e = bestEgg(save);
+      if (save.pets.length >= PET_MAX) { const c = coinPack(save, 2); save.coins += c; save.stats.earned += c; text = `${fmtNum(c)} Münzen (Begleiter-Platz voll)`; }
+      else queueHatch(e, [hatchPet(save, e, rw.luck * luckNow())]);
+    }
+    stats = computeStats(save);
+    persist(); updateCoins(); updateBadges(); updateMetaHud();
+    return text;
+  }
+
+  // ---------- login calendar ----------
+  // the next of seven rewards can be taken once a day; a missed day pauses the calendar, it never resets
+  const loginReady = () => save.login.day !== dayKey();
+  function openLogin() { $('login').hidden = false; sess.prevOv = G.overlay; G.overlay = 'login'; renderLogin(); }
+  function closeLogin() { $('login').hidden = true; G.overlay = sess.prevOv || null; sess.prevOv = null; if (G.state === 'menu') updateMenu(); }
+  function renderLogin() {
+    const ready = loginReady(), step = save.login.step;
+    $('loginBody').innerHTML = `<div class="cal">${LOGIN_REWARDS.map((rw, i) => {
+      const cls = i < step ? 'got' : i === step && ready ? 'now' : '';
+      return `<div class="cal-day ${cls}${i === 6 ? ' big' : ''}"><span class="cal-n">Tag ${i + 1}</span><span class="cal-ico">${rewardIcon(rw)}</span><span class="cal-t">${rewardLabel(rw)}</span>${i < step ? '<span class="cal-ok">✓</span>' : ''}</div>`;
+    }).join('')}</div>
+      <p class="muted cal-note">${ready ? 'Deine Belohnung für heute wartet!' : 'Heute schon abgeholt. Morgen gibt es die nächste Belohnung.'} Verpasst du einen Tag, geht es einfach beim nächsten Mal weiter.</p>
+      <button class="btn primary big" id="loginGo" ${ready ? '' : 'disabled'}>${ready ? 'Abholen' : 'Morgen wieder'}</button>`;
+    $('loginGo').onclick = () => {
+      if (!loginReady()) return;
+      const rw = LOGIN_REWARDS[save.login.step];
+      save.login.day = dayKey(); save.login.step = (save.login.step + 1) % 7;
+      Sfx.perfect();
+      const t = grant(rw);
+      toast('Tagesbelohnung: ' + t, '★', true);
+      renderLogin();
+    };
+  }
+  function rewardIcon(rw) {
+    if (rw.kind === 'coins') return '<i class="coin-ico big"></i>';
+    if (rw.kind === 'boost') return `<i class="boost-ico" style="--bc:${BOOSTS[rw.boost].color}">${rw.boost === 'coins' ? '2×' : '★'}</i>`;
+    return `<i class="egg-mini" style="--c:${rw.luck > 1 ? '#ffc928' : '#7bd35a'}"></i>`;
+  }
+
+  // ---------- gifts for playing ----------
+  function giftReady(i) { return !sess.gifts[i] && sess.sec >= GIFTS[i].min * 60; }
+  function openGifts() { $('gifts').hidden = false; G.overlay = 'gifts'; renderGifts(); }
+  function closeGifts() { $('gifts').hidden = true; G.overlay = null; if (G.state === 'menu') updateMenu(); }
+  function renderGifts() {
+    $('giftBody').innerHTML = `<div class="gift-grid">${GIFTS.map((g, i) => {
+      const got = sess.gifts[i], ready = giftReady(i);
+      const btn = got ? '<span class="tag-done">Geöffnet</span>' : ready ? `<button class="btn primary" data-gift="${i}">Öffnen</button>` : `<span class="gift-t" data-gt="${i}">${fmtClock(g.min * 60 - sess.sec)}</span>`;
+      return `<div class="gift ${got ? 'got' : ready ? 'ready' : ''}"><div class="gift-box"></div><div class="gift-r">${rewardLabel(g)}</div>${btn}</div>`;
+    }).join('')}</div><p class="muted cal-note">Die Geschenke zählen deine Spielzeit seit dem Öffnen des Spiels.</p>`;
+  }
+
+  // ---------- wheel of fortune ----------
+  let wheelSpin = 0, wheelBusy = false;
+  function openWheel() { $('wheel').hidden = false; G.overlay = 'wheel'; renderWheel(); }
+  function closeWheel() { if (wheelBusy) return; $('wheel').hidden = true; G.overlay = null; if (G.state === 'menu') updateMenu(); }
+  function renderWheel() {
+    const n = WHEEL.length, cols = ['#ff8a2a', '#35b6ff', '#43d15a', '#a463ff', '#ff4f5e', '#ffc928', '#35b6ff', '#ff4fd8'];
+    const disc = $('wheelDisc');
+    disc.style.background = `conic-gradient(${WHEEL.map((s, i) => `${cols[i]} ${i * 360 / n}deg ${(i + 1) * 360 / n}deg`).join(',')})`;
+    disc.innerHTML = WHEEL.map((s, i) => `<span style="transform:rotate(${(i + 0.5) * 360 / n}deg)"><b>${s.label}</b></span>`).join('');
+    updateWheelBtn();
+  }
+  function updateWheelBtn() {
+    const free = Date.now() >= save.wheelNext, b = $('wheelGo');
+    b.disabled = !free || wheelBusy;
+    b.textContent = wheelBusy ? 'Dreht …' : free ? 'Gratis drehen!' : 'Nächster Dreh in ' + fmtClock((save.wheelNext - Date.now()) / 1000);
+  }
+  $('wheelGo').onclick = () => {
+    if (wheelBusy || Date.now() < save.wheelNext) return;
+    const i = wheelPick(), n = WHEEL.length;
+    wheelBusy = true; save.wheelNext = Date.now() + WHEEL_EVERY; persist();
+    // land the middle of segment i under the pointer at the top, after five full turns
+    wheelSpin += 360 * 5 + (360 - ((i + 0.5) * 360 / n) - (wheelSpin % 360));
+    $('wheelDisc').style.transform = `rotate(${wheelSpin}deg)`;
+    $('wheelRes').textContent = '';
+    Sfx.click(); updateWheelBtn();
+    setTimeout(() => {
+      wheelBusy = false;
+      const t = grant(WHEEL[i]);
+      $('wheelRes').textContent = 'Gewonnen: ' + t;
+      Sfx.perfect(); updateWheelBtn();
+    }, 4300);
+  };
+
+  // ---------- codes ----------
+  $('codeGo').onclick = () => {
+    const c = $('codeIn').value.trim().toUpperCase().replace(/\s+/g, '');
+    const rw = CODES[c];
+    if (!rw) { $('codeMsg').textContent = 'Diesen Code gibt es nicht.'; Sfx.deny(); return; }
+    if (save.codes[c]) { $('codeMsg').textContent = 'Den Code hast du schon eingelöst.'; Sfx.deny(); return; }
+    save.codes[c] = 1;
+    const t = grant(rw);
+    $('codeMsg').textContent = 'Eingelöst: ' + t; $('codeIn').value = '';
+    Sfx.buy();
+  };
+
+  // ---------- pilot level ----------
+  function addXp(run) {
+    const xp = flightXp(run), ups = [];
+    save.xp += xp;
+    while (save.xp >= xpForLevel(save.level)) {
+      save.xp -= xpForLevel(save.level); save.level++;
+      // every fifth level a boost, otherwise coins
+      const rw = save.level % 5 === 0 ? { kind: 'boost', boost: save.level % 10 === 0 ? 'luck' : 'coins', min: 10 } : { kind: 'coins', k: 1 + save.level / 10 };
+      ups.push({ level: save.level, text: grant(rw) });
+    }
+    return { xp, ups };
+  }
+
+  // ---------- boosts and the little HUD bits ----------
+  function tickMeta(dt) {
+    if (!dt) return;
+    sess.sec += dt;
+    let ended = false;
+    for (const k of Object.keys(BOOSTS)) if (save.boosts[k] > 0) { save.boosts[k] = Math.max(0, save.boosts[k] - dt); if (save.boosts[k] === 0) ended = true; }
+    if (ended && G.state !== 'flight') stats = computeStats(save);
+    if ((sess.saveT += dt) > 15) { sess.saveT = 0; persist(); }
+    if ((sess.hudT += dt) > 0.5) { sess.hudT = 0; updateMetaHud(); }
+  }
+  function updateMetaHud() {
+    const chips = Object.keys(BOOSTS).filter(k => save.boosts[k] > 0).map(k => `<span class="bchip" style="--bc:${BOOSTS[k].color}">${BOOSTS[k].name} <b>${fmtClock(save.boosts[k])}</b></span>`).join('');
+    for (const id of ['mBoosts', 'hBoosts']) { const el = $(id); if (el.innerHTML !== chips) el.innerHTML = chips; }
+    $('lvlNum').textContent = save.level;
+    $('lvlBar').style.width = (clamp(save.xp / xpForLevel(save.level), 0, 1) * 100).toFixed(1) + '%';
+    const gi = GIFTS.findIndex((g, i) => !sess.gifts[i]);
+    const gReady = GIFTS.some((g, i) => giftReady(i));
+    $('giftT').textContent = gReady ? 'Öffnen!' : gi < 0 ? 'Alle' : fmtClock(GIFTS[gi].min * 60 - sess.sec);
+    $('giftBadge').hidden = !gReady;
+    const free = Date.now() >= save.wheelNext;
+    $('wheelT').textContent = free ? 'Gratis!' : fmtClock((save.wheelNext - Date.now()) / 1000);
+    $('wheelBadge').hidden = !free;
+    $('loginBadge').hidden = !loginReady();
+    if (!$('gifts').hidden) document.querySelectorAll('[data-gt]').forEach(el => { const i = +el.dataset.gt; if (giftReady(i)) renderGifts(); else el.textContent = fmtClock(GIFTS[i].min * 60 - sess.sec); });
+    if (!$('wheel').hidden && !wheelBusy) updateWheelBtn();
+  }
+  // the calendar opens by itself once per visit when a reward is waiting
+  function maybeLoginPopup() {
+    if (sess.loginShown || !loginReady() || G.overlay) return;
+    sess.loginShown = true;
+    setTimeout(() => { if (G.state === 'menu' && !G.overlay) openLogin(); }, 600);
+  }
+
+  // ---------- pets: previews ----------
+  const petPrevs = new Map();
+  let petR = null;
+  function petPreview(id, golden, unknown) {
+    const key = id + (golden ? ':g' : '') + (unknown ? ':u' : '');
+    if (petPrevs.has(key)) return petPrevs.get(key);
+    if (!petR) {
+      const r = new T.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      r.setSize(200, 200, false); r.outputColorSpace = T.SRGBColorSpace; r.toneMapping = T.ACESFilmicToneMapping;
+      const s = new T.Scene();
+      s.add(new T.HemisphereLight(0xffffff, 0x6070a0, 1.9));
+      const d = new T.DirectionalLight(0xffffff, 2.2); d.position.set(2, 4, 6); s.add(d);
+      const c = new T.PerspectiveCamera(30, 1, 0.1, 100); c.position.set(0, 0.6, 8.4); c.lookAt(0, 0.1, 0);
+      petR = { r, s, c };
+    }
+    const m = Models.pet(PET_BY_ID[id], golden);
+    m.rotation.y = -0.35;
+    petR.s.add(m); petR.r.render(petR.s, petR.c); petR.s.remove(m);
+    m.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    const out = document.createElement('canvas'); out.width = 200; out.height = 200;
+    const g = out.getContext('2d');
+    if (unknown) g.filter = 'brightness(0) opacity(0.55)';
+    g.drawImage(petR.r.domElement, 0, 0);
+    petPrevs.set(key, out);
+    return out;
+  }
+  function paintPetCanvases(root) {
+    root.querySelectorAll('canvas[data-pet]').forEach(c => {
+      try { c.getContext('2d').drawImage(petPreview(c.dataset.pet, c.dataset.gold === '1', c.dataset.unk === '1'), 0, 0, c.width, c.height); } catch (e) { /* preview unavailable */ }
+    });
+  }
+
+  // ---------- pets: the companion sheet ----------
+  let petTab = 'eggs';
+  function openPets(tab) { petTab = tab || petTab; $('pets').hidden = false; G.overlay = 'pets'; renderPets(); $('petBody').scrollTop = 0; }
+  function closePets() { $('pets').hidden = true; G.overlay = null; stats = computeStats(save); if (G.state === 'menu') updateMenu(); }
+  const pctTxt = v => (v * 100 >= 10 ? Math.round(v * 100) : deNum(v * 100, 1)) + ' %';
+  function petLine(p, golden) { return `+${pctTxt(petBonusValue(p, golden))} ${PET_TYPES[p.type]}`; }
+  function renderPets() {
+    document.querySelectorAll('.ptab').forEach(t => t.setAttribute('aria-selected', t.dataset.ptab === petTab ? 'true' : 'false'));
+    $('ptCoins').textContent = fmtNum(save.coins);
+    const body = $('petBody'), luck = luckNow();
+    if (petTab === 'eggs') {
+      const tot = PET_RARITIES.reduce((a, r, i) => a + r.w * (i > 0 ? luck : 1), 0);
+      $('petFoot').textContent = `${save.pets.length} / ${PET_MAX} Begleiter${luck > 1 ? ' · 2× Glück aktiv!' : ''}`;
+      body.innerHTML = '<div class="egg-grid">' + EGGS.map(e => {
+        const open = eggUnlocked(save, e), full = save.pets.length >= PET_MAX;
+        const odds = e.pets.map(p => {
+          const w = PET_RARITIES[p.rarity].w * (p.rarity > 0 ? luck : 1), known = save.index[p.id];
+          return `<div class="odd" style="--rc:${PET_RARITIES[p.rarity].color}"><canvas width="60" height="60" data-pet="${p.id}" data-unk="${known ? 0 : 1}"></canvas><span>${known ? p.name : '???'}</span><b>${deNum(w / tot * 100, w / tot < 0.01 ? 1 : 0)} %</b></div>`;
+        }).join('');
+        const btn = (k) => `<button class="btn${save.coins >= e.cost * k ? ' primary' : ''}" data-hatch="${e.id}" data-k="${k}" ${open && !full && save.coins >= e.cost * k && save.pets.length + k <= PET_MAX ? '' : 'disabled'}>${k > 1 ? k + '× ' : ''}<i class="coin-ico"></i>${fmtNum(e.cost * k)}</button>`;
+        return `<div class="egg-card${open ? '' : ' locked'}"><div class="egg-head"><div class="egg-shape" style="--c:${e.color}"></div><div><div class="up-name">${e.name}</div><div class="up-lvl">${open ? (eggCompleted(save, e) ? 'Sammlung komplett: +5 % Münzen' : `${e.pets.filter(p => save.index[p.id]).length} / 5 entdeckt`) : 'Erreiche ' + ZONES[e.zone].name}</div></div></div>
+          <div class="odds">${odds}</div>${open ? `<div class="row stretch">${btn(1)}${btn(3)}</div>` : `<button class="btn" disabled>Erreiche ${ZONES[e.zone].name}</button>`}</div>`;
+      }).join('') + '</div>';
+    } else if (petTab === 'inv') {
+      const slots = petSlots(save), eq = new Set(save.equipped);
+      const rank = it => (eq.has(it.uid) ? 1e6 : 0) + petPower(PET_BY_ID[it.id], it.golden);
+      const list = save.pets.slice().sort((a, b) => rank(b) - rank(a));
+      const fusable = [...new Set(save.pets.map(it => it.id))].filter(id => canFuse(save, id));
+      const b = petBonus(save);
+      $('petFoot').textContent = `${save.pets.length} / ${PET_MAX} Begleiter · Plätze steigen mit Rebirths`;
+      body.innerHTML = `<div class="pet-bar"><div class="pet-sum"><b>Ausgerüstet ${save.equipped.length} / ${slots}</b><span>Münzen +${pctTxt(b.coins)} · Schub +${pctTxt(b.thrust)} · Tank +${pctTxt(b.fuel)} · Magnet +${pctTxt(b.magnet)}</span></div>
+        <div class="row"><button class="btn gold" id="petBest" ${save.pets.length ? '' : 'disabled'}>Beste ausrüsten</button><button class="btn purple" id="petFuse" ${fusable.length ? '' : 'disabled'}>Gold-Fusion${fusable.length ? ' (' + fusable.length + ')' : ''}</button><button class="btn" id="petClean" ${save.pets.some(it => !eq.has(it.uid) && PET_BY_ID[it.id].rarity === 0 && !it.golden) ? '' : 'disabled'}>Gewöhnliche abgeben</button></div></div>
+        ${list.length ? '<div class="pet-grid">' + list.map(it => {
+          const p = PET_BY_ID[it.id], on = eq.has(it.uid), R = PET_RARITIES[p.rarity];
+          return `<div class="pet-card${on ? ' eq' : ''}${it.golden ? ' golden' : ''}" style="--rc:${R.color}"><canvas width="120" height="120" data-pet="${p.id}" data-gold="${it.golden ? 1 : 0}"></canvas>
+            <div class="pet-name">${it.golden ? '★ ' : ''}${p.name}</div><div class="pet-rar">${it.golden ? 'Golden · ' : ''}${R.name}</div><div class="pet-bon">${petLine(p, it.golden)}</div>
+            <div class="pet-act"><button class="btn${on ? '' : ' primary'}" data-eq="${it.uid}" ${on || save.equipped.length < slots ? '' : 'disabled'}>${on ? 'Ablegen' : 'Ausrüsten'}</button><button class="btn del" data-del="${it.uid}" aria-label="Abgeben" ${on ? 'disabled' : ''}>✕</button></div></div>`;
+        }).join('') + '</div>' : '<p class="muted">Noch keine Begleiter. Öffne im Tab „Eier“ dein erstes Ei!</p>'}`;
+      $('petBest').onclick = () => { equipBest(save); persist(); Sfx.click(); renderPets(); refreshPetMeshes(); };
+      $('petFuse').onclick = () => {
+        let n = 0;
+        for (const id of fusable) while (canFuse(save, id)) { fusePets(save, id); n++; save.stats.fused++; }
+        persist(); Sfx.perfect(); checkMissions(false); renderPets(); refreshPetMeshes();
+        toast(n + ' goldene' + (n > 1 ? '' : 'r') + ' Begleiter fusioniert!', '★', true);
+      };
+      $('petClean').onclick = () => {
+        const before = save.pets.length;
+        save.pets = save.pets.filter(it => eq.has(it.uid) || it.golden || PET_BY_ID[it.id].rarity > 0);
+        persist(); Sfx.click(); renderPets();
+        toast((before - save.pets.length) + ' gewöhnliche Begleiter abgegeben', '');
+      };
+    } else {
+      const found = Object.keys(save.index).length;
+      $('petFoot').textContent = `${found} / ${PETS.length} entdeckt · jede komplette Ei-Sammlung: +5 % Münzen für immer`;
+      body.innerHTML = EGGS.map(e => `<div class="idx-row${eggCompleted(save, e) ? ' done' : ''}"><div class="idx-head"><div class="egg-shape small" style="--c:${e.color}"></div><b>${e.name}</b><span>${eggCompleted(save, e) ? '+5 % Münzen' : e.pets.filter(p => save.index[p.id]).length + ' / 5'}</span></div>
+        <div class="idx-pets">${e.pets.map(p => `<div class="idx-pet" style="--rc:${PET_RARITIES[p.rarity].color}"><canvas width="90" height="90" data-pet="${p.id}" data-unk="${save.index[p.id] ? 0 : 1}"></canvas><span>${save.index[p.id] ? p.name : '???'}</span></div>`).join('')}</div></div>`).join('');
+    }
+    paintPetCanvases(body);
+  }
+  $('petBody').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.dataset.hatch) {
+      const egg = EGG_BY_ID[b.dataset.hatch], k = +b.dataset.k;
+      if (!eggUnlocked(save, egg) || save.coins < egg.cost * k || save.pets.length + k > PET_MAX) { Sfx.deny(); return; }
+      save.coins -= egg.cost * k;
+      const items = [];
+      for (let i = 0; i < k; i++) items.push(hatchPet(save, egg, luckNow()));
+      persist(); checkMissions(false);
+      queueHatch(egg, items);
+      renderPets();
+    } else if (b.dataset.eq) {
+      const uid = +b.dataset.eq;
+      if (save.equipped.includes(uid)) save.equipped = save.equipped.filter(u => u !== uid);
+      else if (save.equipped.length < petSlots(save)) save.equipped.push(uid);
+      persist(); Sfx.click(); renderPets(); refreshPetMeshes();
+    } else if (b.dataset.del) {
+      const uid = +b.dataset.del;
+      save.pets = save.pets.filter(it => it.uid !== uid);
+      persist(); Sfx.click(); renderPets();
+    }
+  });
+  document.querySelectorAll('.ptab').forEach(t => t.addEventListener('click', () => { Sfx.click(); petTab = t.dataset.ptab; renderPets(); $('petBody').scrollTop = 0; }));
+
+  // ---------- hatching ----------
+  const hatchQ = [];
+  function queueHatch(egg, items) { hatchQ.push({ egg, items }); if ($('hatch').hidden) nextHatch(); }
+  function nextHatch() {
+    const h = hatchQ.shift();
+    if (!h) { $('hatch').hidden = true; G.overlay = sess.hatchPrev || null; sess.hatchPrev = null; if (!$('pets').hidden) renderPets(); return; }
+    if ($('hatch').hidden) { sess.hatchPrev = G.overlay; $('hatch').hidden = false; G.overlay = 'hatch'; }
+    const stage = $('hatchStage');
+    stage.innerHTML = h.items.map(it => {
+      const p = PET_BY_ID[it.id], R = PET_RARITIES[p.rarity];
+      return `<div class="hatch-slot" style="--c:${h.egg.color};--rc:${R.color}"><div class="hatch-egg"></div><div class="hatch-pet"><div class="hatch-burst"></div><canvas width="200" height="200" data-pet="${p.id}"></canvas><div class="pet-name">${p.name}</div><div class="hatch-rar">${R.name}</div><div class="pet-bon">${petLine(p, false)}</div></div></div>`;
+    }).join('');
+    paintPetCanvases(stage);
+    $('hatchOk').hidden = true;
+    Sfx.click();
+    setTimeout(() => {
+      stage.querySelectorAll('.hatch-slot').forEach(s => s.classList.add('open'));
+      const top = Math.max(...h.items.map(it => PET_BY_ID[it.id].rarity));
+      if (top >= 3) { Sfx.perfect(); G.flash = 0.5; G.flashRgb = [255, 214, 90]; } else Sfx.buy();
+      $('hatchOk').hidden = false; $('hatchOk').focus({ preventScroll: true });
+    }, 1300);
+  }
+  $('hatchOk').onclick = () => { Sfx.click(); nextHatch(); };
+
+  // ---------- pets around the rocket ----------
+  let petMeshes = [], petKey = '';
+  function refreshPetMeshes() {
+    const key = save.equipped.join(',') + '|' + save.pets.filter(it => save.equipped.includes(it.uid)).map(it => it.id + it.golden).join(',');
+    if (key === petKey) return;
+    petKey = key;
+    for (const m of petMeshes) { scene.remove(m); m.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+    petMeshes = save.equipped.map(uid => save.pets.find(it => it.uid === uid)).filter(Boolean).map(it => {
+      const m = Models.pet(PET_BY_ID[it.id], it.golden);
+      scene.add(m);
+      return m;
+    });
+  }
+  const _pv = new T.Vector3();
+  function updatePets(dt) {
+    refreshPetMeshes();
+    if (!petMeshes.length || !rocketMesh) return;
+    const n = petMeshes.length, onPad = G.state === 'menu' || G.state === 'charge' || G.state === 'title';
+    const R = rocketMesh.userData.radius || 1, L = rocketMesh.userData.length || 7;
+    const a = rocketMesh.rotation.z, ca = Math.cos(a), sa = Math.sin(a);
+    petMeshes.forEach((m, i) => {
+      m.visible = rocketMesh.visible || onPad;
+      const ph = G.t * 1.1 + i * TAU / n;
+      if (onPad) {
+        // they hover in a row on the camera side of the pad
+        m.scale.setScalar(1.9);
+        _pv.set(-15 + i * 4.2, PAD_Y + 17 + (i % 2) * 2.2 + Math.sin(G.t * 2 + i) * 0.5, 10);
+      } else {
+        // in flight they circle the rocket a little behind its middle
+        m.scale.setScalar(Math.max(0.9, R * 0.95));
+        const rad = R * 2.4 + 2.4;
+        const rp = rocketMesh.position, back = L * 0.15, c = Math.cos(ph) * rad;
+        _pv.set(rp.x - ca * back - sa * c, rp.y - sa * back + ca * c, rp.z + Math.sin(ph) * rad);
+      }
+      m.position.lerp(_pv, onPad ? 1 - Math.exp(-dt * 6) : 1);
+      m.lookAt(camera.position);
+      m.userData.update(G.t);
+    });
+  }
 
   // ---------- toasts & banners ----------
   let bannerTimer = 0;
@@ -1387,6 +1883,8 @@
       updateObjects(dt);
     }
     updateRocketVisual(active ? sdt : 0);
+    updatePets(dt);
+    tickMeta(active ? dt : 0);
     updateCamera(dt);
     pad.userData.lamp.emissiveIntensity = Math.sin(G.t * 4) > 0.2 ? 2.4 : 0.2;
     if (pad.userData.sock) pad.userData.sock.rotation.y = Math.sin(G.t * 1.7) * 0.25;
