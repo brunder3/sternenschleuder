@@ -317,15 +317,85 @@ const MISSIONS = [
   { id:'max1',  g:'Sammlung', t:'maxed', goal:1, reward:5600, text:'Ein Upgrade auf Höchststufe' },
   { id:'max7',  g:'Sammlung', t:'maxed', goal:7, reward:400000,   text:'Sieben Upgrades auf Höchststufe' },
   { id:'max14', g:'Sammlung', t:'maxed', goal:14, reward:1.2e10,   text:'Alle Upgrades auf Höchststufe' },
+  { id:'earn1m', g:'Beute', t:'earned', goal:1e6,  reward:58000,  text:'Insgesamt 1 Mio. Münzen verdienen' },
+  { id:'earn1b', g:'Beute', t:'earned', goal:1e9,  reward:3.9e7,  text:'Insgesamt 1 Mrd. Münzen verdienen' },
+  { id:'earn1t', g:'Beute', t:'earned', goal:1e12, reward:1.4e10, text:'Insgesamt 1 Billion Münzen verdienen' },
+  { id:'gem1k', g:'Beute', t:'gems', goal:1000, reward:2.6e8, text:'1.000 Edelsteine finden' },
+  { id:'perf1',  g:'Pilot', t:'perfects', goal:1,   reward:230,    text:'Eine perfekte Zündung' },
+  { id:'perf25', g:'Pilot', t:'perfects', goal:25,  reward:22000,  text:'25 perfekte Zündungen' },
+  { id:'perf100',g:'Pilot', t:'perfects', goal:100, reward:500000, text:'100 perfekte Zündungen' },
+  { id:'play1h', g:'Pilot', t:'playTime', goal:3600,  reward:22000,  text:'Eine Stunde in der Luft' },
+  { id:'play5h', g:'Pilot', t:'playTime', goal:18000, reward:1.5e6,  text:'Fünf Stunden in der Luft' },
+  { id:'rkFunke', g:'Raketen', t:'rocketAlt', rocket:'funke', goal:100000, reward:58000, text:'Mit der Funke ins All: 100 km' },
+  { id:'rkSpatz', g:'Raketen', t:'rocketAlt', rocket:'spatz', goal:8849, reward:450, text:'Mit der Jupiter-C (Spatz) über den Mount Everest' },
+  { id:'rkPolaris', g:'Raketen', t:'rocketAlt', rocket:'polaris', goal:100000, reward:3200, text:'Mit der Ares I-X (Polaris) in den Weltraum' },
+  { id:'rkTitan', g:'Raketen', t:'rocketAlt', rocket:'titan', goal:3.844e8, reward:22000, text:'Mit der Saturn V (Titan) zum Mond' },
+  { id:'rkOrion', g:'Raketen', t:'rocketAlt', rocket:'orion', goal:7.8e10, reward:58000, text:'Mit der Orion zum Mars' },
+  { id:'rkLicht', g:'Raketen', t:'rocketAlt', rocket:'lichtbringer', goal:2.4e22, reward:1.2e10, text:'Mit dem Lichtbringer nach Andromeda' },
+  { id:'rb1',  g:'Rebirth', t:'rebirths', goal:1,  reward:5000,   text:'Dein erster Rebirth' },
+  { id:'rb3',  g:'Rebirth', t:'rebirths', goal:3,  reward:60000,  text:'Drei Rebirths' },
+  { id:'rb5',  g:'Rebirth', t:'rebirths', goal:5,  reward:1.5e6,  text:'Fünf Rebirths' },
+  { id:'rb10', g:'Rebirth', t:'rebirths', goal:10, reward:2.6e8,  text:'Zehn Rebirths' },
+  { id:'rb14', g:'Rebirth', t:'rebirths', goal:14, reward:1.2e10, text:'Rebirth-Legende: 14 Rebirths' },
 ];
+
+// ---------- rebirth ----------
+// As in Roblox simulators: start over without coins, upgrades and rockets (back to the Funke), keep
+// records and quests, and earn one more times the coins for good with every rebirth (x2, x3, ...). Each rebirth asks to reach a
+// farther zone within the current round (since the last rebirth), and the stronger rockets need a number
+// of rebirths: from the Titan on, the way out is only open with rebirths.
+const REBIRTH_ZONES = ['space', 'geo', 'moon', 'mars', 'jupiter', 'saturn', 'edge', 'oort', 'proxima', 'wega', 'plejaden', 'orionnebel', 'zentrum', 'andromeda'];
+const ZONE_INDEX = Object.fromEntries(ZONES.map((z, i) => [z.id, i]));
+function rebirthZone(n) { return ZONE_INDEX[REBIRTH_ZONES[Math.min(n, REBIRTH_ZONES.length - 1)]]; }
+function rebirthMult(n) { return 1 + n; }
+// rebirths a rocket needs: one per rebirth goal that lies below the zone that unlocks the rocket
+for (const R of ROCKETS) R.rb = REBIRTH_ZONES.filter(id => ZONE_INDEX[id] < R.req).length;
+function canRebirth(save) { return save.life.bestZone >= rebirthZone(save.rebirths); }
+function applyRebirth(save) {
+  if (!canRebirth(save)) return false;
+  save.rebirths++;
+  save.coins = 0; save.up = {}; save.life = { bestZone: 0 };
+  save.rockets = ['funke']; save.rocket = 'funke';
+  return true;
+}
+
+// ---------- daily quests ----------
+// Three quests a day, drawn from a pool by the date; goals and rewards grow with the player's progress.
+const DAILY_POOL = [
+  { k:'flights',  text: n => `${n} Flüge absolvieren`,                 goal: p => 4 + Math.min(6, p.zone >> 2) },
+  { k:'coins',    text: n => `${fmtNum(n)} Münzen verdienen`,           goal: p => niceRound(Math.max(300, p.runCoins * 3)) },
+  { k:'rings',    text: n => `Durch ${n} Boost-Ringe fliegen`,         goal: p => 6 + 2 * Math.min(6, p.zone >> 1) },
+  { k:'cans',     text: n => `${n} Treibstoffkanister einsammeln`,     goal: p => 4 + Math.min(8, p.zone >> 1) },
+  { k:'perfects', text: n => `${n}-mal perfekt zünden`,                goal: () => 3 },
+  { k:'balloons', text: n => `${n} Ballons platzen lassen`,            goal: () => 4 },
+  { k:'zone',     text: (n, p) => `In einem Flug ${ZONES[n].name} erreichen (${fmtAlt(ZONES[n].A)})`, goal: p => Math.max(2, p.zone - 1) },
+];
+function dayKey(d = new Date()) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function dailyReward(save) { return niceRound(Math.max(150, ZONES[save.bestZone].val * 30) * rebirthMult(save.rebirths)); }
+function makeDaily(save, day) {
+  let h = 2166136261;
+  for (const ch of day) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const rnd = () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
+  const p = { zone: save.bestZone, runCoins: save.stats.bestRunCoins };
+  const pool = DAILY_POOL.slice(), quests = [], reward = dailyReward(save);
+  while (quests.length < 3) {
+    const t = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
+    quests.push({ k: t.k, goal: t.goal(p), prog: 0, reward, claimed: false });
+  }
+  return { day, quests, bonus: reward * 3, bonusClaimed: false };
+}
+function dailyText(q) { const t = DAILY_POOL.find(x => x.k === q.k); return t ? t.text(q.goal) : q.k; }
+function dailyDone(q) { return q.prog >= q.goal; }
 
 // ---------- save ----------
 function defaultSave() {
   return {
     v: 2, coins: 0, up: {}, rockets: ['funke'], rocket: 'funke', claimed: {}, seen: {}, bestZone: 0, won: false,
+    rebirths: 0, life: { bestZone: 0 }, daily: null,
     settings: { sound: true },
     stats: { flights:0, bestH:0, bestA:0, bestV:0, bestRunCoins:0, bestRunRings:0, bestNoBoost:0, bestRunBounces:0,
-             earned:0, coinsPicked:0, gems:0, rings:0, cans:0, balloons:0, shieldHits:0, turbos:0, hits:0, playTime:0 },
+             earned:0, coinsPicked:0, gems:0, rings:0, cans:0, balloons:0, shieldHits:0, turbos:0, hits:0, playTime:0,
+             perfects:0, rocketBest:{} },
   };
 }
 function normalizeSave(s) {
@@ -343,6 +413,11 @@ function normalizeSave(s) {
   out.seen = Object.assign({}, s.seen || {});
   if (!Number.isFinite(out.coins) || out.coins < 0) out.coins = 0;
   out.bestZone = clamp(out.bestZone | 0, 0, ZONES.length - 1);
+  out.rebirths = Math.max(0, out.rebirths | 0);
+  // saves from before rebirths count their whole history as the current round
+  out.life = { bestZone: clamp((s.life && Number.isFinite(s.life.bestZone) ? s.life.bestZone : out.bestZone) | 0, 0, ZONES.length - 1) };
+  out.stats.rocketBest = Object.assign({}, (s.stats && s.stats.rocketBest) || {});
+  if (!out.daily || typeof out.daily !== 'object' || !Array.isArray(out.daily.quests)) out.daily = null;
   // version 1 ended at the Heliopause; the goal is now Andromeda, so that win does not count any more
   if (!(s.v >= 2)) { out.won = false; out.v = 2; }
   return out;
@@ -364,7 +439,7 @@ function computeStats(save) {
     magnet: (mag ? 30 + 12 * mag : 0) + (R.magnet > 1 ? 70 * (R.magnet - 1) : 0),
     armor: L('armor') + R.armor,
     turbo: L('turbo') + R.turbo,
-    coinMult: Math.pow(1.12, L('value')) * R.coin,
+    coinMult: Math.pow(1.12, L('value')) * R.coin * rebirthMult(save.rebirths || 0),
     luck: L('luck'),
     canRate: 1 + 0.12 * L('fuelfind'),
     canAmt: (0.22 + 0.015 * L('fuelfind')) * R.can,
@@ -476,5 +551,6 @@ if (typeof module !== 'undefined') {
   module.exports = { ZONES, ZH, zoneFrac, GOAL_H, SPACE_H, HEIGHT_BONUS, PHYS, launchSpeed, clamp, lerp, smooth, zoneIndexAt,
     LIGHTYEAR, LIGHTSPEED, SPEED_STOPS, fuelScarcity, displaySpeed, timeLapseAt, fmtSpeedParts, fmtLapse,
     altitudeAt, speedScaleAt, coinValueAt, gravity, airDensity, windAt, SKY_STOPS, cloudDensity, UPGRADES, UPG, niceRound, upgradeCost, ROCKETS, ROCKET_BY_ID,
-    MISSIONS, defaultSave, normalizeSave, computeStats, angDiff, stepRocket, deNum, fmtNum, fmtAltParts, fmtAlt, fmtSpeed };
+    MISSIONS, defaultSave, normalizeSave, computeStats, REBIRTH_ZONES, rebirthZone, rebirthMult, canRebirth, applyRebirth,
+    DAILY_POOL, dayKey, dailyReward, makeDaily, dailyText, dailyDone, angDiff, stepRocket, deNum, fmtNum, fmtAltParts, fmtAlt, fmtSpeed };
 }

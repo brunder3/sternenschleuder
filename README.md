@@ -46,7 +46,8 @@ Die Rakete fliegt immer geradeaus. Gelenkt wird nur die Neigung der Nase.
 - **Echte Größenordnungen:** Höhen und Geschwindigkeiten entsprechen der Wirklichkeit (Schallmauer im Jetstream, 7,8 km/s im Orbit, 4,24 Lichtjahre bis Proxima Centauri, nie schneller als das Licht). Weil die Entfernungen im All riesig sind, zeigt das HUD dort den Zeitraffer an.
 - **14 Upgrades** mit zusammen 311 Stufen. Die vier wichtigsten (Startrampe, Tank, Booster, Einkommen) sind direkt im Startmenü kaufbar.
 - **20 Raketen** mit eigenem 3D-Modell, eigenen Werten und Spezialfähigkeiten, vom Silvesterkracher bis zum Lichtbringer.
-- **65 Missionen** mit Belohnungen.
+- **85 Quests** mit Belohnungen, dazu jeden Tag **drei Tages-Quests** und ein Tagesbonus, wenn alle drei erledigt sind.
+- **Rebirth** wie in Roblox-Simulatoren: Hast du das Rebirth-Ziel erreicht (zuerst den Weltraum, dann Geostationäre Bahn, Mond, Mars … bis Andromeda), kannst du neu starten. Münzen, Upgrades und Raketen sind dann weg, dafür bringt jeder Flug für immer mehr Münzen (×2, ×3, ×4 …). Ab der Titan brauchen die Raketen eine Mindestzahl an Rebirths, ohne Rebirth geht es ab dem Asteroidengürtel kaum noch weiter.
 - Startrampe mit Service-Turm und Flammengraben, perfekte Zündung, Boost-Ringe, Treibstoffkanister, Ballons, UFOs, Edelsteine, Schallmauer-Effekt und eine prozedurale Low-Poly-Landschaft mit Flüssen, Seen, Bergen und Wäldern.
 
 ## Aufbau
@@ -65,7 +66,7 @@ Die Rakete fliegt immer geradeaus. Gelenkt wird nur die Neigung der Nase.
 | `.github/workflows/pages.yml` | Veröffentlicht das Spiel bei jedem Push auf `main` über GitHub Pages |
 | `vendor/three-extras.min.js` | Zusätze aus three.js r159 (EffectComposer, Bloom, OutputPass, GLTFLoader, MeshoptDecoder), als klassisches Skript gebündelt |
 
-Weil `js/core.js` ohne Browser auskommt, lässt sich das Balancing mit Node simulieren: Ein Bot fliegt, verdient und kauft ein. Die Preise sind so abgestimmt, dass ein Bot etwa 140 Flüge bis zur Heliopause und etwa 230 bis Andromeda braucht. Jenseits der Heliopause werden Treibstoffkanister seltener, damit dort Tank und Triebwerk über die Reichweite entscheiden.
+Weil `js/core.js` ohne Browser auskommt, lässt sich das Balancing mit Node simulieren: Ein Bot fliegt, verdient, kauft ein und macht Rebirths. Mit Rebirths braucht er etwa 12 Rebirths und rund 475 Flüge bis Andromeda. Ohne Rebirth kommt er nach etwa 180 Flügen bis zum Asteroidengürtel und danach kaum weiter. Jenseits der Heliopause werden Treibstoffkanister seltener, damit dort Tank und Triebwerk über die Reichweite entscheiden.
 
 ## Bildnachweis
 

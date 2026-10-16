@@ -106,6 +106,7 @@
       if (G.state === 'flight') togglePause();
       else if (G.overlay === 'hangar') closeHangar();
       else if (G.overlay === 'help') closeHelp();
+      else if (G.overlay === 'rebirth') closeRebirth();
       else if (G.state === 'charge') toMenu();
       return;
     }
@@ -261,6 +262,10 @@
     const zi = zoneIndexAt(Hh);
     if (zi > G.lastZone) {
       G.lastZone = zi;
+      if (zi > save.life.bestZone) {
+        save.life.bestZone = zi;
+        if (zi === rebirthZone(save.rebirths)) toast('Rebirth bereit!', '↻', true);
+      }
       if (zi > save.bestZone) { save.bestZone = zi; showBanner('Neue Zone entdeckt', ZONES[zi].name, ZONES[zi].desc); Sfx.zone(); }
       else if (zi >= 2) showBanner(fmtAlt(ZONES[zi].A), ZONES[zi].name, '');
     }
@@ -335,6 +340,9 @@
     s.bestRunCoins = Math.max(s.bestRunCoins, run.coins); s.bestRunRings = Math.max(s.bestRunRings, run.rings);
     s.bestRunBounces = Math.max(s.bestRunBounces, run.bounces);
     if (run.fuelUsed < 0.001 && run.turbos === 0) s.bestNoBoost = Math.max(s.bestNoBoost, run.maxA);
+    if (run.perfect) s.perfects++;
+    s.rocketBest[save.rocket] = Math.max(s.rocketBest[save.rocket] || 0, run.maxA);
+    updateDaily(run, total);
     const firstWin = reason === 'win' && !save.won;
     if (reason === 'win') save.won = true;
     checkMissions(false);
@@ -977,6 +985,8 @@
       case 'noBoost': return s.bestNoBoost;
       case 'rockets': return save.rockets.length;
       case 'maxed': return maxedCount();
+      case 'rebirths': return save.rebirths;
+      case 'rocketAlt': return Math.max(s.rocketBest[m.rocket] || 0, run && save.rocket === m.rocket ? run.maxA : 0);
       default: return (s[m.t] || 0) + (run && run[m.t] ? run[m.t] : 0);
     }
   }
@@ -988,13 +998,59 @@
       if (missionDone(m, live)) {
         save.seen[m.id] = 1; newly.push(m);
         if (G.run) G.run.done.push(m);
-        if (G.state !== 'results') toast('Mission erfüllt: ' + m.text, '+' + fmtNum(m.reward), true);
+        if (G.state !== 'results') toast('Quest erfüllt: ' + m.text, '+' + fmtNum(m.reward), true);
       }
     }
     if (newly.length) { Sfx.mission(); updateBadges(); }
     return newly;
   }
-  function claimableCount() { return MISSIONS.filter(m => !save.claimed[m.id] && missionDone(m, false)).length; }
+  function claimableCount() {
+    ensureDaily();
+    const d = save.daily, daily = d.quests.filter(q => !q.claimed && dailyDone(q)).length;
+    const bonus = !d.bonusClaimed && d.quests.every(q => q.claimed) ? 1 : 0;
+    return MISSIONS.filter(m => !save.claimed[m.id] && missionDone(m, false)).length + daily + bonus;
+  }
+  // ---------- daily quests ----------
+  function ensureDaily() {
+    const day = dayKey();
+    if (!save.daily || save.daily.day !== day) { save.daily = makeDaily(save, day); persist(); }
+  }
+  function updateDaily(run, total) {
+    ensureDaily();
+    let fresh = false;
+    for (const q of save.daily.quests) {
+      if (q.claimed) continue;
+      const was = dailyDone(q);
+      if (q.k === 'flights') q.prog++;
+      else if (q.k === 'coins') q.prog += total;
+      else if (q.k === 'rings') q.prog += run.rings;
+      else if (q.k === 'cans') q.prog += run.cans;
+      else if (q.k === 'perfects') q.prog += run.perfect ? 1 : 0;
+      else if (q.k === 'balloons') q.prog += run.balloons;
+      else if (q.k === 'zone') q.prog = Math.max(q.prog, zoneIndexAt(run.maxH));
+      if (!was && dailyDone(q)) fresh = true;
+    }
+    if (fresh) { toast('Tages-Quest erfüllt!', '★', true); Sfx.mission(); }
+  }
+  function claimDaily(i) {
+    ensureDaily();
+    const q = save.daily.quests[i];
+    if (!q || q.claimed || !dailyDone(q)) return;
+    q.claimed = true; save.coins += q.reward; save.stats.earned += q.reward;
+    persist(); Sfx.buy(); updateBadges(); updateCoins();
+  }
+  function claimDailyBonus() {
+    const d = save.daily;
+    if (!d || d.bonusClaimed || !d.quests.every(q => q.claimed)) return;
+    d.bonusClaimed = true; save.coins += d.bonus; save.stats.earned += d.bonus;
+    persist(); Sfx.perfect(); updateBadges(); updateCoins();
+    toast('Tagesbonus abgeholt!', '+' + fmtNum(d.bonus), true);
+  }
+  function untilMidnight() {
+    const n = new Date(), m = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1);
+    const min = Math.max(1, Math.round((m - n) / 60000));
+    return min >= 60 ? `${Math.floor(min / 60)} Std. ${min % 60} Min.` : `${min} Min.`;
+  }
   function claimMission(id) {
     const m = MISSIONS.find(x => x.id === id);
     if (!m || save.claimed[id] || !missionDone(m, false)) return;
@@ -1058,7 +1114,11 @@
     return true;
   }
   function updateCoins() { const c = fmtNum(save.coins); $('mCoins').textContent = c; $('hgCoins').textContent = c; $('cCoins').textContent = c; }
-  function updateBadges() { const n = claimableCount(); for (const id of ['mBadge', 'mBadge2']) { const b = $(id); b.hidden = n === 0; b.textContent = n; } }
+  function updateBadges() {
+    const n = claimableCount();
+    for (const id of ['mBadge', 'mBadge2']) { const b = $(id); b.hidden = n === 0; b.textContent = n; }
+    $('rbBadge').hidden = !canRebirth(save);
+  }
   function nextGoal() {
     const z = save.bestZone;
     if (z >= ZONES.length - 1) return save.won ? 'Alles entdeckt. Jag deine Rekorde!' : 'Ziel: Andromeda';
@@ -1070,6 +1130,8 @@
     $('mBest').textContent = save.stats.bestA > 0 ? fmtAlt(save.stats.bestA) : '–';
     $('mGoal').textContent = nextGoal();
     $('btnSound').setAttribute('aria-pressed', save.settings.sound ? 'true' : 'false');
+    $('mMult').hidden = save.rebirths === 0;
+    $('mMult').textContent = '×' + deNum(rebirthMult(save.rebirths), 1);
     const st = computeStats(save);
     $('qcards').innerHTML = QUICK.map(q => {
       const u = UPG[q.id], L = save.up[q.id] || 0, maxed = L >= u.max, cost = maxed ? 0 : upgradeCost(u, L);
@@ -1096,7 +1158,8 @@
   function reasonText(r) { return { land: 'Gelandet', crash: 'Bruchlandung', splash: 'Platsch! Wasserlandung', skip: 'Zurück zur Erde', abort: 'Flug beendet', win: 'Andromeda erreicht!' }[r] || 'Flug beendet'; }
   function bestTip() {
     const nr = ROCKETS.find(R => !save.rockets.includes(R.id));
-    if (nr && nr.req <= save.bestZone && nr.cost <= save.coins) return `Du kannst dir die Rakete <b>${nr.name}</b> leisten. Schau im Hangar unter Raketen vorbei.`;
+    if (nr && nr.rb > save.rebirths && canRebirth(save)) return `Die Rakete <b>${nr.name}</b> gibt es erst ab ${nr.rb} Rebirth${nr.rb > 1 ? 's' : ''}. Du bist bereit für den nächsten <b>Rebirth</b>!`;
+    if (nr && nr.req <= save.bestZone && nr.rb <= save.rebirths && nr.cost <= save.coins) return `Du kannst dir die Rakete <b>${nr.name}</b> leisten. Schau im Hangar unter Raketen vorbei.`;
     const opts = UPGRADES.filter(u => (save.up[u.id] || 0) < u.max).map(u => ({ u, c: upgradeCost(u, save.up[u.id] || 0) })).filter(x => x.c <= save.coins);
     if (opts.length) {
       const pri = ['engine', 'tank', 'sling', 'aero', 'value'];
@@ -1104,7 +1167,9 @@
       return `Bereit für ein Upgrade: <b>${opts[0].u.name}</b> kostet ${fmtNum(opts[0].c)} Münzen.`;
     }
     const claim = claimableCount();
-    if (claim) return `Du hast <b>${claim}</b> erfüllte Mission${claim > 1 ? 'en' : ''}. Hol dir die Belohnung im Hangar ab.`;
+    if (claim) return `Du hast <b>${claim}</b> erfüllte Quest${claim > 1 ? 's' : ''}. Hol dir die Belohnung unter Quests ab.`;
+    if (canRebirth(save)) return `Du kannst einen <b>Rebirth</b> machen: Danach bekommst du für immer ×${deNum(rebirthMult(save.rebirths + 1), 1)} Münzen.`;
+    if (nr && nr.rb > save.rebirths) return `Die Rakete <b>${nr.name}</b> gibt es ab ${nr.rb} Rebirth${nr.rb > 1 ? 's' : ''}. Erreiche ${ZONES[rebirthZone(save.rebirths)].name} für den nächsten Rebirth.`;
     if (nr && nr.req > save.bestZone) return `Erreiche <b>${ZONES[nr.req].name}</b>, um die Rakete ${nr.name} freizuschalten.`;
     return pick(['Zünde, wenn der Balken im Feld „Perfekt“ steht: Das gibt mehr Tempo und 10 % mehr Münzen.', 'Boost-Ringe geben Tempo und ein bisschen Treibstoff zurück.', 'Ballons platzen lassen gibt Auftrieb und Münzen.', 'Zünde den Turbo, während du Schub gibst: Er schiebt zusätzlich und kostet keinen Treibstoff.']);
   }
@@ -1135,10 +1200,10 @@
         <div><b>${run.rings}</b><span>Ringe</span></div>
         <div><b>${run.cans}</b><span>Kanister</span></div>
       </div>
-      ${d.newly.length ? `<div class="done-list">${shown.map(() => '<div>✓ <span></span></div>').join('')}${more > 0 ? `<div class="muted">und ${more} weitere – Belohnungen im Hangar unter Missionen</div>` : ''}</div>` : ''}
+      ${d.newly.length ? `<div class="done-list">${shown.map(() => '<div>✓ <span></span></div>').join('')}${more > 0 ? `<div class="muted">und ${more} weitere – Belohnungen unter Quests</div>` : ''}</div>` : ''}
       <div class="tipbox">${bestTip()}</div>
       <div class="row stretch"><button class="btn" id="resHangar">Hangar</button><button class="btn primary" id="resAgain">Weiter</button></div>`;
-    sheet.querySelectorAll('.done-list span').forEach((s, i) => { s.textContent = 'Mission erfüllt: ' + shown[i].text; });
+    sheet.querySelectorAll('.done-list span').forEach((s, i) => { s.textContent = 'Quest erfüllt: ' + shown[i].text; });
     $('results').hidden = false; G.overlay = 'results';
     $('resAgain').onclick = () => { Sfx.click(); closeResults(); if (d.firstWin) showVictory(); };
     $('resHangar').onclick = () => { Sfx.click(); closeResults(); openHangar('upgrades'); if (d.firstWin) showVictory(); };
@@ -1217,11 +1282,11 @@
         </div>`;
       }).join('') + '</div>';
     } else if (hangarTab === 'rockets') {
-      $('hgFoot').textContent = 'Neue Raketen schaltest du frei, indem du höhere Zonen erreichst.';
+      $('hgFoot').textContent = 'Neue Raketen schaltest du mit höheren Zonen frei, die stärksten zusätzlich mit Rebirths.';
       const maxT = ROCKETS[ROCKETS.length - 1];
       const bar = (v, m) => `style="--w:${clamp(v / m * 100, 4, 100).toFixed(0)}%"`;
       body.innerHTML = '<div class="grid">' + ROCKETS.map(R => {
-        const own = save.rockets.includes(R.id), sel = save.rocket === R.id, unlocked = R.req <= save.bestZone;
+        const own = save.rockets.includes(R.id), sel = save.rocket === R.id, unlocked = R.req <= save.bestZone && R.rb <= save.rebirths;
         const perks = [];
         if (R.armor) perks.push(`+${R.armor} Schild`);
         if (R.turbo) perks.push(`+${R.turbo} Turbo`);
@@ -1232,6 +1297,7 @@
         let btn;
         if (sel) btn = '<button class="btn" disabled>Ausgewählt</button>';
         else if (own) btn = `<button class="btn" data-select="${R.id}">Auswählen</button>`;
+        else if (R.rb > save.rebirths) btn = `<button class="btn" disabled>Ab ${R.rb} Rebirth${R.rb > 1 ? 's' : ''}</button>`;
         else if (!unlocked) btn = `<button class="btn" disabled>Erreiche ${ZONES[R.req].name}</button>`;
         else btn = `<button class="btn${R.cost <= save.coins ? ' primary' : ''}" data-rocket="${R.id}" ${R.cost <= save.coins ? '' : 'disabled'}><i class="coin-ico"></i>${fmtNum(R.cost)}</button>`;
         return `<div class="card${sel ? ' sel' : ''}${!own && !unlocked ? ' locked' : ''}">
@@ -1245,17 +1311,31 @@
       }).join('') + '</div>';
       body.querySelectorAll('canvas[data-rk]').forEach(c => {
         const R = ROCKET_BY_ID[c.dataset.rk];
-        try { c.getContext('2d').drawImage(rocketPreview(R, !save.rockets.includes(R.id) && R.req > save.bestZone), 0, 0); } catch (e) { /* preview unavailable */ }
+        try { c.getContext('2d').drawImage(rocketPreview(R, !save.rockets.includes(R.id) && (R.req > save.bestZone || R.rb > save.rebirths)), 0, 0); } catch (e) { /* preview unavailable */ }
       });
     } else if (hangarTab === 'missions') {
-      $('hgFoot').textContent = `${Object.keys(save.claimed).length} von ${MISSIONS.length} Missionen abgeschlossen.`;
+      ensureDaily();
+      const d = save.daily;
+      $('hgFoot').textContent = `${Object.keys(save.claimed).length} von ${MISSIONS.length} Quests abgeschlossen.`;
+      const reward = (v) => `<span class="reward"><i class="coin-ico"></i>${fmtNum(v)}</span>`;
+      const daily = d.quests.map((q, i) => {
+        const done = dailyDone(q), pct = clamp(q.prog / q.goal, 0, 1) * 100;
+        const prog = q.k === 'zone' ? (done ? 'Geschafft' : `Bisher: ${ZONES[q.prog] ? ZONES[q.prog].name : '–'}`) : `${fmtNum(Math.min(q.prog, q.goal))} / ${fmtNum(q.goal)}`;
+        const btn = q.claimed ? '<span class="tag-done">Erledigt</span>' : done ? `<button class="btn primary" data-dclaim="${i}">Abholen</button>` : reward(q.reward);
+        return `<div class="mission${q.claimed ? ' claimed' : done ? ' claimable' : ''}"><div class="m-text">${dailyText(q)}</div>${btn}<div class="m-prog"><div class="lvl-bar"><i style="width:${pct.toFixed(1)}%"></i></div><span>${prog}</span></div></div>`;
+      }).join('');
+      const all = d.quests.every(q => q.claimed);
+      const chest = `<div class="mission chest${d.bonusClaimed ? ' claimed' : all ? ' claimable' : ''}"><div class="m-text">Tagesbonus: alle drei Quests abholen</div>${d.bonusClaimed ? '<span class="tag-done">Erledigt</span>' : all ? '<button class="btn gold" data-dbonus="1">Bonus holen</button>' : reward(d.bonus)}</div>`;
       const groups = {};
       for (const m of MISSIONS) (groups[m.g] = groups[m.g] || []).push(m);
-      body.innerHTML = Object.entries(groups).map(([g, list]) => `<div class="m-group">${g}</div><div class="m-list">` + list.map(m => {
+      body.innerHTML = `<section class="daily-box"><div class="daily-head"><h3>Tages-Quests</h3><span class="timer">Neue Quests in ${untilMidnight()}</span></div><div class="m-list">${daily}${chest}</div></section>` +
+        Object.entries(groups).map(([g, list]) => `<div class="m-group">${g}</div><div class="m-list">` + list.map(m => {
         const v = missionValue(m, false), done = v >= m.goal, claimed = !!save.claimed[m.id];
-        const pct = clamp(m.t === 'alt' || m.t === 'speed' || m.t === 'runCoins' ? Math.log10(1 + v) / Math.log10(1 + m.goal) : v / m.goal, 0, 1) * 100;
-        const prog = m.t === 'alt' ? `${fmtAlt(Math.min(v, m.goal))} / ${fmtAlt(m.goal)}` : m.t === 'speed' ? `${fmtSpeed(Math.min(v, m.goal))} / ${fmtSpeed(m.goal)}` : `${fmtNum(Math.min(v, m.goal))} / ${fmtNum(m.goal)}`;
-        const btn = claimed ? '<span class="up-lvl">Erledigt</span>' : done ? `<button class="btn primary" data-claim="${m.id}"><i class="coin-ico"></i>${fmtNum(m.reward)}</button>` : `<span class="up-lvl" style="display:inline-flex;gap:6px;align-items:center"><i class="coin-ico" style="width:14px;height:14px"></i>${fmtNum(m.reward)}</span>`;
+        const logish = m.t === 'alt' || m.t === 'speed' || m.t === 'runCoins' || m.t === 'rocketAlt' || m.t === 'earned';
+        const pct = clamp(logish ? Math.log10(1 + v) / Math.log10(1 + m.goal) : v / m.goal, 0, 1) * 100;
+        const prog = m.t === 'alt' || m.t === 'rocketAlt' ? `${fmtAlt(Math.min(v, m.goal))} / ${fmtAlt(m.goal)}` : m.t === 'speed' ? `${fmtSpeed(Math.min(v, m.goal))} / ${fmtSpeed(m.goal)}`
+          : m.t === 'playTime' ? `${Math.floor(Math.min(v, m.goal) / 60)} / ${m.goal / 60} min` : `${fmtNum(Math.min(v, m.goal))} / ${fmtNum(m.goal)}`;
+        const btn = claimed ? '<span class="tag-done">Erledigt</span>' : done ? `<button class="btn primary" data-claim="${m.id}"><i class="coin-ico"></i>${fmtNum(m.reward)}</button>` : reward(m.reward);
         return `<div class="mission${claimed ? ' claimed' : done ? ' claimable' : ''}"><div class="m-text">${m.text}</div>${btn}<div class="m-prog"><div class="lvl-bar"><i style="width:${pct.toFixed(1)}%"></i></div><span>${prog}</span></div></div>`;
       }).join('') + '</div>').join('');
     } else {
@@ -1284,7 +1364,7 @@
       if (buyUpgrade(b.dataset.buy)) { renderHangar(); const nb = document.querySelector(`[data-buy="${b.dataset.buy}"]`); if (nb && !nb.disabled) nb.focus({ preventScroll: true }); }
     } else if (b.dataset.rocket) {
       const R = ROCKET_BY_ID[b.dataset.rocket];
-      if (!R || save.rockets.includes(R.id) || R.cost > save.coins || R.req > save.bestZone) { Sfx.deny(); return; }
+      if (!R || save.rockets.includes(R.id) || R.cost > save.coins || R.req > save.bestZone || R.rb > save.rebirths) { Sfx.deny(); return; }
       save.coins -= R.cost; save.rockets.push(R.id); save.rocket = R.id;
       persist(); Sfx.buy(); checkMissions(false); renderHangar();
       toast(R.name + ' ist startklar!', '', true);
@@ -1292,9 +1372,54 @@
       save.rocket = b.dataset.select; persist(); Sfx.click(); renderHangar();
     } else if (b.dataset.claim) {
       claimMission(b.dataset.claim); renderHangar();
+    } else if (b.dataset.dclaim) {
+      claimDaily(+b.dataset.dclaim); renderHangar();
+    } else if (b.dataset.dbonus) {
+      claimDailyBonus(); renderHangar();
     }
   });
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => { Sfx.click(); hangarTab = t.dataset.tab; renderHangar(); $('tabBody').scrollTop = 0; }));
+
+  // ---------- rebirth ----------
+  const REBIRTH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/><path d="M12 8l1.2 2.5 2.8.4-2 2 .5 2.8-2.5-1.3-2.5 1.3.5-2.8-2-2 2.8-.4z" fill="currentColor" stroke-width="1"/></svg>';
+  function openRebirth() { $('rebirth').hidden = false; G.overlay = 'rebirth'; renderRebirth(false); }
+  function closeRebirth() { $('rebirth').hidden = true; G.overlay = null; if (G.state === 'menu') updateMenu(); }
+  function renderRebirth(confirm) {
+    const n = save.rebirths, z = rebirthZone(n), ready = canRebirth(save);
+    const pct = clamp((save.life.bestZone + 1) / (z + 1), 0, 1) * 100;
+    const unlocks = ROCKETS.filter(R => R.rb === n + 1).map(R => R.name);
+    const unlockText = unlocks.length ? `Schaltet frei: Rakete${unlocks.length > 1 ? 'n' : ''} <b>${unlocks.join(' und ')}</b>` : '';
+    $('rebirthBody').innerHTML = `
+      <div class="rb-top"><div class="rb-icon">${REBIRTH_SVG}</div><div><h2>Rebirth</h2><div class="rb-count">${n === 0 ? 'Noch kein Rebirth' : n === 1 ? '1 Rebirth' : n + ' Rebirths'}</div></div></div>
+      <div class="rb-mult"><div><span>Münzen jetzt</span><b>×${deNum(rebirthMult(n), 1)}</b></div><div class="rb-arrow">➜</div><div class="next"><span>Nach dem Rebirth</span><b>×${deNum(rebirthMult(n + 1), 1)}</b></div></div>
+      <div class="rb-req${ready ? ' ok' : ''}">
+        <div>Ziel für diesen Rebirth: <b>${ZONES[z].name}</b> (${fmtAlt(ZONES[z].A)})</div>
+        <div class="lvl-bar"><i style="width:${pct.toFixed(1)}%"></i></div>
+        <div class="muted">${ready ? 'Geschafft! Du kannst jetzt neu starten.' : 'Seit dem letzten Rebirth erreicht: ' + ZONES[save.life.bestZone].name}</div>
+      </div>
+      <div class="rb-lists">
+        <div class="lose"><b>Wird zurückgesetzt</b><ul><li>Deine Münzen (${fmtNum(save.coins)})</li><li>Alle Upgrades</li><li>Alle Raketen (zurück zur Funke)</li></ul></div>
+        <div class="keep"><b>Bleibt dir</b><ul><li>Rekorde und Logbuch</li><li>Quests und Belohnungen</li><li>Der Münz-Bonus für immer</li></ul></div>
+      </div>
+      ${unlockText ? `<div class="rb-unlock">${unlockText}</div>` : ''}
+      ${confirm ? '<div class="rb-confirm"><b>Wirklich neu starten?</b><div class="row stretch"><button class="btn" id="rbNo">Abbrechen</button><button class="btn gold" id="rbYes">Ja, Rebirth!</button></div></div>'
+        : `<button class="btn gold big" id="rbGo" ${ready ? '' : 'disabled'}>${ready ? 'Rebirth' : 'Noch nicht bereit'}</button>`}`;
+    if (confirm) { $('rbNo').onclick = () => { Sfx.click(); renderRebirth(false); }; $('rbYes').onclick = doRebirth; }
+    else $('rbGo').onclick = () => { Sfx.click(); renderRebirth(true); };
+  }
+  function doRebirth() {
+    if (!applyRebirth(save)) { Sfx.deny(); return; }
+    stats = computeStats(save);
+    ensureDaily(); checkMissions(false); persist();
+    $('rebirth').hidden = true; G.overlay = null;
+    toMenu();
+    G.flash = 0.7; G.flashRgb = [255, 214, 90];
+    Sfx.perfect();
+    showBanner('Rebirth ' + save.rebirths, 'Münzen ×' + deNum(rebirthMult(save.rebirths), 1), 'Alles auf Anfang, aber jeder Flug bringt jetzt mehr.');
+  }
+  $('btnRebirth').onclick = () => { Sfx.init(); Sfx.click(); openRebirth(); };
+  $('btnRebirthX').onclick = () => { Sfx.click(); closeRebirth(); };
+  $('btnHangarX').onclick = () => { Sfx.click(); closeHangar(); };
 
   // ---------- toasts & banners ----------
   let bannerTimer = 0;
