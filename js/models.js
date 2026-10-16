@@ -1035,6 +1035,62 @@ const Models = (() => {
     return m;
   }
 
+  // ---------- pets ----------
+  // a round little creature with big eyes; the egg adds its accessory, rarity adds wings, an aura and
+  // (mythic) a colour that cycles through the rainbow; golden pets are polished gold
+  function pet(def, golden) {
+    const g = new T.Group(), body = new T.Group();
+    g.add(body);
+    const col = new T.Color(golden ? '#ffcf3a' : def.color);
+    const skin = new T.MeshPhysicalMaterial({ color: col, roughness: golden ? 0.25 : 0.55, metalness: golden ? 0.85 : 0, clearcoat: 0.6, clearcoatRoughness: 0.25,
+      emissive: def.rarity >= 3 ? col.clone().multiplyScalar(0.25) : new T.Color(0) });
+    const sphere = (r, mat, x, y, z, sx = 1, sy = 1, sz = 1) => { const m = new T.Mesh(new T.SphereGeometry(r, 20, 14), mat); m.position.set(x, y, z); m.scale.set(sx, sy, sz); body.add(m); return m; };
+    sphere(1, skin, 0, 0, 0, 1, 0.92, 1);
+    const white = std('#ffffff', 0.3, 0), black = std('#141022', 0.2, 0), blush = std('#ff8aa8', 0.6, 0);
+    const eyes = [];
+    for (const sx of [-1, 1]) {
+      const e = new T.Group(); e.position.set(sx * 0.36, 0.18, 0.82); body.add(e);
+      const w = new T.Mesh(new T.SphereGeometry(0.27, 16, 12), white); w.scale.z = 0.6; e.add(w);
+      const pu = new T.Mesh(new T.SphereGeometry(0.15, 14, 10), black); pu.position.set(0, -0.02, 0.13); e.add(pu);
+      const hi = new T.Mesh(new T.SphereGeometry(0.05, 8, 6), white); hi.position.set(0.05, 0.06, 0.25); e.add(hi);
+      eyes.push(e);
+      sphere(0.13, blush, sx * 0.62, -0.18, 0.72, 1, 0.6, 0.4);
+    }
+    const spin = [];
+    switch (def.egg) {
+      case 'wiese': { const st = new T.Mesh(new T.CylinderGeometry(0.04, 0.05, 0.4, 6), std('#3f8f2a', 0.6, 0)); st.position.y = 1.05; body.add(st);
+        sphere(0.2, std('#5fcf3a', 0.5, 0), -0.14, 1.25, 0, 1.4, 0.45, 0.8).rotation.z = 0.5; sphere(0.2, std('#5fcf3a', 0.5, 0), 0.14, 1.25, 0, 1.4, 0.45, 0.8).rotation.z = -0.5; break; }
+      case 'wolken': for (const [x, z] of [[-0.75, 0.2], [0.75, 0.2], [0, -0.7], [-0.5, -0.5], [0.5, -0.5]]) sphere(0.42, std('#ffffff', 0.9, 0), x, -0.72, z); break;
+      case 'orbit': { const st = new T.Mesh(new T.CylinderGeometry(0.03, 0.03, 0.6, 6), std('#c9d2de', 0.3, 0.8)); st.position.y = 1.15; body.add(st); sphere(0.13, std('#ff4a3d', 0.3, 0, { emissive: 0xff2010, emissiveIntensity: 1.2 }), 0, 1.5, 0); break; }
+      case 'mond': for (const [x, y, z] of [[-0.5, 0.55, 0.55], [0.6, -0.3, 0.6], [0.2, 0.75, -0.55], [-0.75, -0.25, -0.45]]) { const c = sphere(0.18, std('#000000', 1, 0, { transparent: true, opacity: 0.18 }), x * 0.98, y * 0.98, z * 0.98, 1, 1, 0.35); c.lookAt(0, 0, 0); } break;
+      case 'mars': for (const sx of [-1, 1]) { const h = new T.Mesh(new T.ConeGeometry(0.16, 0.5, 10), std('#fff1d6', 0.5, 0)); h.position.set(sx * 0.45, 0.95, 0); h.rotation.z = -sx * 0.4; body.add(h); } break;
+      case 'ring': { const r = new T.Mesh(new T.TorusGeometry(1.45, 0.09, 8, 40), std('#f0d9a0', 0.4, 0.2)); r.rotation.x = Math.PI / 2 - 0.35; body.add(r); spin.push(r); break; }
+      case 'stern': { const s = new T.Shape(); for (let i = 0; i < 10; i++) { const a = i / 10 * TAU + Math.PI / 2, rr = i % 2 ? 0.16 : 0.38; s[i ? 'lineTo' : 'moveTo'](Math.cos(a) * rr, Math.sin(a) * rr); }
+        const m = new T.Mesh(new T.ExtrudeGeometry(s, { depth: 0.1, bevelEnabled: false }), std('#ffe14a', 0.3, 0.3, { emissive: 0xffc020, emissiveIntensity: 0.6 })); m.position.set(0, 1.25, -0.05); body.add(m); spin.push(m); break; }
+      case 'galaxie': { const r = new T.Mesh(new T.TorusGeometry(1.35, 0.05, 6, 48), new T.MeshBasicMaterial({ color: 0xc9a8ff, transparent: true, opacity: 0.85, blending: T.AdditiveBlending, depthWrite: false }));
+        r.rotation.x = 1.2; body.add(r); spin.push(r); const m = sphere(0.14, new T.MeshBasicMaterial({ color: 0xffffff }), 1.35, 0, 0); r.add(m); break; }
+    }
+    // rarer pets get wings, the rarest an aura
+    if (def.rarity >= 2) for (const sx of [-1, 1]) { const w = sphere(0.45, std(golden ? '#fff1b0' : '#ffffff', 0.4, 0, { transparent: true, opacity: 0.85 }), sx * 1.05, 0.25, -0.25, 0.25, 0.75, 0.55); w.rotation.z = sx * 0.6; w.userData.wing = sx; spin.push(w); }
+    let aura = null;
+    if (def.rarity >= 3 || golden) { aura = new T.Sprite(glowMat(golden ? 0xffd84a : def.rarity >= 4 ? 0xff7ae0 : 0xffd84a, 0.55)); aura.scale.set(4.2, 4.2, 1); g.add(aura); }
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    const ph = Math.random() * 10;
+    g.userData = {
+      update(t) {
+        body.position.y = Math.sin(t * 3 + ph) * 0.15;
+        body.rotation.z = Math.sin(t * 2 + ph) * 0.08;
+        const blink = Math.sin(t * 0.9 + ph) > 0.985 ? 0.15 : 1;
+        for (const e of eyes) e.scale.y = blink;
+        for (const s of spin) { if (s.userData.wing) s.rotation.y = s.userData.wing * (0.3 + Math.sin(t * 14 + ph) * 0.35); else s.rotation.z += 0.02; }
+        if (def.rarity >= 4 && !golden) skin.color.setHSL((t * 0.15 + ph) % 1, 0.75, 0.62);
+        if (aura) aura.material.opacity = 0.4 + 0.15 * Math.sin(t * 4 + ph);
+      },
+    };
+    g.userData.update(0);
+    return g;
+  }
+
   // ---------- pickups ----------
   const SHARED = {};
   function shared() {
@@ -1283,7 +1339,7 @@ const Models = (() => {
 
   return {
     TEX, buildTextures, std, glowMat, additive, stretchBetween, mulberry, jitter, FLAME_COLORS,
-    rocket, launchPad, onModels, treeParts, mountain, hill, shared, gem, fuelCan, boostRing,
+    rocket, pet, launchPad, onModels, treeParts, mountain, hill, shared, gem, fuelCan, boostRing,
     bird, partyBalloons, weatherBalloon, ufo, drone, zeppelin, rock, meteor, satellite, debris, plasma, planet,
   };
 })();

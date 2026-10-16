@@ -332,6 +332,18 @@ const MISSIONS = [
   { id:'rkTitan', g:'Raketen', t:'rocketAlt', rocket:'titan', goal:3.844e8, reward:22000, text:'Mit der Saturn V (Titan) zum Mond' },
   { id:'rkOrion', g:'Raketen', t:'rocketAlt', rocket:'orion', goal:7.8e10, reward:58000, text:'Mit der Orion zum Mars' },
   { id:'rkLicht', g:'Raketen', t:'rocketAlt', rocket:'lichtbringer', goal:2.4e22, reward:1.2e10, text:'Mit dem Lichtbringer nach Andromeda' },
+  { id:'pet1',   g:'Begleiter', t:'hatched', goal:1,   reward:150,   text:'Dein erstes Ei ausbrüten' },
+  { id:'pet25',  g:'Begleiter', t:'hatched', goal:25,  reward:5600,  text:'25 Eier ausbrüten' },
+  { id:'pet100', g:'Begleiter', t:'hatched', goal:100, reward:140000, text:'100 Eier ausbrüten' },
+  { id:'pet500', g:'Begleiter', t:'hatched', goal:500, reward:3.9e7,  text:'500 Eier ausbrüten' },
+  { id:'gold1',  g:'Begleiter', t:'fused', goal:1,  reward:12000,  text:'Einen goldenen Begleiter fusionieren' },
+  { id:'gold10', g:'Begleiter', t:'fused', goal:10, reward:2.6e8,  text:'Zehn goldene Begleiter fusionieren' },
+  { id:'idx10',  g:'Begleiter', t:'indexed', goal:10, reward:22000, text:'10 verschiedene Begleiter finden' },
+  { id:'idx40',  g:'Begleiter', t:'indexed', goal:40, reward:1.2e10, text:'Alle 40 Begleiter finden' },
+  { id:'myth1',  g:'Begleiter', t:'mythics', goal:1, reward:1.5e6, text:'Einen mythischen Begleiter ausbrüten' },
+  { id:'lv10',   g:'Pilot', t:'level', goal:10, reward:5600,   text:'Pilotenlevel 10' },
+  { id:'lv25',   g:'Pilot', t:'level', goal:25, reward:500000, text:'Pilotenlevel 25' },
+  { id:'lv50',   g:'Pilot', t:'level', goal:50, reward:1.4e9,  text:'Pilotenlevel 50' },
   { id:'rb1',  g:'Rebirth', t:'rebirths', goal:1,  reward:5000,   text:'Dein erster Rebirth' },
   { id:'rb3',  g:'Rebirth', t:'rebirths', goal:3,  reward:60000,  text:'Drei Rebirths' },
   { id:'rb5',  g:'Rebirth', t:'rebirths', goal:5,  reward:1.5e6,  text:'Fünf Rebirths' },
@@ -387,15 +399,129 @@ function makeDaily(save, day) {
 function dailyText(q) { const t = DAILY_POOL.find(x => x.k === q.k); return t ? t.text(q.goal) : q.k; }
 function dailyDone(q) { return q.prog >= q.goal; }
 
+// ---------- pets ----------
+// Companions hatched from eggs with coins, like the pets of Roblox simulators. Each pet boosts one value
+// (coins, thrust, fuel or magnet) by its egg tier and rarity; five equal pets fuse into a golden one with
+// twice the bonus. Pets stay through rebirths. Finding all five pets of an egg adds 5 % coins for good.
+const PET_RARITIES = [
+  { id:'common',  name:'Gewöhnlich', w:60,  mult:1,   color:'#a9b6d6' },
+  { id:'rare',    name:'Selten',     w:27,  mult:1.8, color:'#4fb0ff' },
+  { id:'epic',    name:'Episch',     w:10,  mult:3.2, color:'#b25cff' },
+  { id:'legend',  name:'Legendär',   w:2.7, mult:6,   color:'#ffc928' },
+  { id:'mythic',  name:'Mythisch',   w:0.3, mult:12,  color:'#ff4fd8' },
+];
+const PET_TYPES = { coins:'Münzen', thrust:'Schub', fuel:'Tank', magnet:'Magnet' };
+const EGGS = [
+  { id:'wiese',   name:'Wiesen-Ei',   zone:0,  cost:150,   color:'#7bd35a', pets:[['Grashüpfi','coins','#7bd35a'], ['Kleeblatt','magnet','#3fb45a'], ['Pusteblume','fuel','#f2f2e6'], ['Marienkäfer','coins','#ff4a3d'], ['Goldkäfer','coins','#ffc928']] },
+  { id:'wolken',  name:'Wolken-Ei',   zone:2,  cost:500,   color:'#cfe7ff', pets:[['Wölkchen','coins','#eef6ff'], ['Regentropf','fuel','#4fb0ff'], ['Blitzi','thrust','#ffe14a'], ['Regenbogen','coins','#ff7ac0'], ['Donnervogel','thrust','#6a5cff']] },
+  { id:'orbit',   name:'Orbit-Ei',    zone:7,  cost:5000,  color:'#9fb2c8', pets:[['Satelliti','coins','#c9d2de'], ['Funkmast','magnet','#ff8a2a'], ['Raumsonde','thrust','#ffd36a'], ['Astro-Hund','fuel','#e8c39e'], ['ISS-Kätzchen','coins','#ffffff']] },
+  { id:'mond',    name:'Mond-Ei',     zone:9,  cost:20000, color:'#d9d6cc', pets:[['Mondhase','coins','#e9e6dc'], ['Kraterkrabbe','magnet','#a8a39a'], ['Mondstaub','fuel','#c7c2ff'], ['Lunar-Eule','thrust','#8fa0c8'], ['Silbermond','coins','#e8f0ff']] },
+  { id:'mars',    name:'Mars-Ei',     zone:10, cost:4e4,   color:'#e0643a', pets:[['Marsmännchen','coins','#6fe05a'], ['Rostkäfer','fuel','#c4572c'], ['Olympus','thrust','#ff9a5a'], ['Phobos','magnet','#9a7a66'], ['Roter Drache','coins','#ff3a2a']] },
+  { id:'ring',    name:'Ring-Ei',     zone:13, cost:2.5e5, color:'#f0d9a0', pets:[['Eisbrocken','fuel','#cfefff'], ['Ringling','coins','#f0d9a0'], ['Titan-Qualle','magnet','#ffb06a'], ['Ringkröte','thrust','#d9b56a'], ['Ringkönig','coins','#ffd84a']] },
+  { id:'stern',   name:'Sternen-Ei',  zone:16, cost:3.5e6, color:'#ffe88a', pets:[['Funkel','coins','#fff3a8'], ['Pulsarchen','thrust','#7df9ff'], ['Nebelfuchs','magnet','#ff8ad8'], ['Supernova','fuel','#ff9a3a'], ['Sternenwal','coins','#8ab4ff']] },
+  { id:'galaxie', name:'Galaxie-Ei',  zone:20, cost:2.5e9, color:'#b48cff', pets:[['Wirbel','coins','#c9a8ff'], ['Schwarzes Loch','magnet','#2a1f44'], ['Quasar-Qualle','thrust','#5ee7ff'], ['Galaxiedrache','fuel','#ff5fd2'], ['Andromeda-Phönix','coins','#ffb23e']] },
+];
+const PETS = [];
+EGGS.forEach((e, tier) => { e.tier = tier; e.pets = e.pets.map(([name, type, color], r) => { const p = { id: e.id + r, name, type, color, rarity: r, egg: e.id, tier }; PETS.push(p); return p; }); });
+const PET_BY_ID = Object.fromEntries(PETS.map(p => [p.id, p]));
+const EGG_BY_ID = Object.fromEntries(EGGS.map(e => [e.id, e]));
+const PET_MAX = 60;
+// raw strength of a pet; the type decides how it turns into a bonus
+function petPower(p, golden) { return 0.02 * (1 + p.tier * 0.6) * PET_RARITIES[p.rarity].mult * (golden ? 2 : 1); }
+const PET_SCALE = { coins: 1, thrust: 0.3, fuel: 0.3, magnet: 1 };
+function petBonusValue(p, golden) { return petPower(p, golden) * PET_SCALE[p.type]; }
+function petSlots(save) { return Math.min(8, 3 + Math.floor(save.rebirths / 2)); }
+function eggUnlocked(save, e) { return save.bestZone >= e.zone; }
+function bestEgg(save) { return EGGS.filter(e => eggUnlocked(save, e)).pop() || EGGS[0]; }
+function eggCompleted(save, e) { return e.pets.every(p => save.index[p.id]); }
+function petBonus(save) {
+  const b = { coins: 0, thrust: 0, fuel: 0, magnet: 0 };
+  for (const uid of save.equipped) {
+    const it = save.pets.find(x => x.uid === uid);
+    if (it) { const p = PET_BY_ID[it.id]; b[p.type] += petBonusValue(p, it.golden); }
+  }
+  b.coins += 0.05 * EGGS.filter(e => eggCompleted(save, e)).length;
+  return b;
+}
+// draws one pet; luck > 1 makes the rarer ones more likely
+function hatchPet(save, egg, luck, rnd = Math.random) {
+  const w = PET_RARITIES.map((r, i) => r.w * (i > 0 ? luck : 1));
+  let x = rnd() * w.reduce((a, b) => a + b, 0), r = 0;
+  while (r < w.length - 1 && (x -= w[r]) > 0) r++;
+  const p = egg.pets[r];
+  save.petUid = (save.petUid || 0) + 1;
+  const item = { uid: save.petUid, id: p.id, golden: false };
+  save.pets.push(item);
+  save.index[p.id] = 1;
+  save.stats.hatched = (save.stats.hatched || 0) + 1;
+  return item;
+}
+function equipBest(save) {
+  const rank = it => petPower(PET_BY_ID[it.id], it.golden) * (PET_BY_ID[it.id].type === 'coins' ? 1.2 : 1);
+  save.equipped = save.pets.slice().sort((a, b) => rank(b) - rank(a)).slice(0, petSlots(save)).map(it => it.uid);
+}
+// five equal, normal pets fuse into one golden pet
+function canFuse(save, id) { return save.pets.filter(it => it.id === id && !it.golden).length >= 5; }
+function fusePets(save, id) {
+  if (!canFuse(save, id)) return null;
+  let n = 0;
+  save.pets = save.pets.filter(it => { if (n < 5 && it.id === id && !it.golden) { n++; save.equipped = save.equipped.filter(u => u !== it.uid); return false; } return true; });
+  save.petUid++;
+  const item = { uid: save.petUid, id, golden: true };
+  save.pets.push(item);
+  return item;
+}
+
+// ---------- pilot level ----------
+// Every flight earns XP; each level adds 1 % coins for good and pays a reward.
+function xpForLevel(L) { return Math.round(30 * Math.pow(L, 1.25)); }
+function flightXp(run) { return 10 + 4 * zoneIndexAt(run.maxH) + (run.perfect ? 5 : 0) + 2 * Math.floor(Math.log10(1 + run.coins)); }
+
+// ---------- boosts, rewards ----------
+// Boosts run on play time (seconds the game is open), like the potions of Roblox games.
+const BOOSTS = { coins: { name:'2× Münzen', color:'#ffc928' }, luck: { name:'2× Glück', color:'#a463ff' } };
+function boostActive(save, k) { return (save.boosts[k] || 0) > 0; }
+// a "coin pack": some flights' worth of coins at the player's current stage
+function coinPack(save, k) { return niceRound(Math.max(100, ZONES[save.bestZone].val * 20 * k) * rebirthMult(save.rebirths)); }
+// 7-day login calendar: a missed day only pauses it, it never starts over
+const LOGIN_REWARDS = [
+  { kind:'coins', k:2 }, { kind:'boost', boost:'coins', min:10 }, { kind:'coins', k:4 }, { kind:'egg', luck:1 },
+  { kind:'boost', boost:'luck', min:15 }, { kind:'coins', k:8 }, { kind:'egg', luck:4 },
+];
+// presents for staying: minutes of play in this session
+const GIFTS = [
+  { min:2, kind:'coins', k:1 }, { min:5, kind:'boost', boost:'coins', min2:5 }, { min:10, kind:'egg', luck:1 },
+  { min:15, kind:'coins', k:4 }, { min:25, kind:'boost', boost:'luck', min2:10 }, { min:40, kind:'egg', luck:2 }, { min:60, kind:'coins', k:12 },
+];
+// wheel of fortune: one free spin every three hours
+const WHEEL = [
+  { kind:'coins', k:1, w:26, label:'Münzen' }, { kind:'boost', boost:'coins', min2:5, w:16, label:'2× Münzen' },
+  { kind:'coins', k:3, w:16, label:'Münzen ×3' }, { kind:'egg', luck:1, w:12, label:'Gratis-Ei' },
+  { kind:'boost', boost:'luck', min2:10, w:12, label:'2× Glück' }, { kind:'coins', k:6, w:9, label:'Münzen ×6' },
+  { kind:'egg', luck:3, w:6, label:'Glücks-Ei' }, { kind:'coins', k:25, w:3, label:'Jackpot' },
+];
+const WHEEL_EVERY = 3 * 3600 * 1000;
+function wheelPick(rnd = Math.random) { let x = rnd() * WHEEL.reduce((a, s) => a + s.w, 0); for (let i = 0; i < WHEEL.length; i++) if ((x -= WHEEL[i].w) <= 0) return i; return 0; }
+// codes to redeem once each
+const CODES = {
+  STERNENSCHLEUDER: { kind:'coins', k:5, text:'Münzpaket' },
+  ANDROMEDA: { kind:'egg', luck:3, text:'Glücks-Ei' },
+  SATURNV: { kind:'boost', boost:'luck', min2:20, text:'20 Minuten 2× Glück' },
+  ABHEBEN: { kind:'boost', boost:'coins', min2:15, text:'15 Minuten 2× Münzen' },
+};
+
+
 // ---------- save ----------
 function defaultSave() {
   return {
     v: 2, coins: 0, up: {}, rockets: ['funke'], rocket: 'funke', claimed: {}, seen: {}, bestZone: 0, won: false,
     rebirths: 0, life: { bestZone: 0 }, daily: null,
+    pets: [], equipped: [], petUid: 0, index: {}, level: 1, xp: 0, boosts: { coins: 0, luck: 0 },
+    login: { day: '', step: 0, claimed: true }, wheelNext: 0, codes: {},
     settings: { sound: true },
     stats: { flights:0, bestH:0, bestA:0, bestV:0, bestRunCoins:0, bestRunRings:0, bestNoBoost:0, bestRunBounces:0,
              earned:0, coinsPicked:0, gems:0, rings:0, cans:0, balloons:0, shieldHits:0, turbos:0, hits:0, playTime:0,
-             perfects:0, rocketBest:{} },
+             perfects:0, rocketBest:{}, hatched:0, fused:0 },
   };
 }
 function normalizeSave(s) {
@@ -418,6 +544,15 @@ function normalizeSave(s) {
   out.life = { bestZone: clamp((s.life && Number.isFinite(s.life.bestZone) ? s.life.bestZone : out.bestZone) | 0, 0, ZONES.length - 1) };
   out.stats.rocketBest = Object.assign({}, (s.stats && s.stats.rocketBest) || {});
   if (!out.daily || typeof out.daily !== 'object' || !Array.isArray(out.daily.quests)) out.daily = null;
+  out.pets = Array.isArray(s.pets) ? s.pets.filter(it => it && PET_BY_ID[it.id] && Number.isFinite(it.uid)).map(it => ({ uid: it.uid, id: it.id, golden: !!it.golden })) : [];
+  out.petUid = Math.max(out.petUid | 0, ...out.pets.map(it => it.uid), 0);
+  out.equipped = Array.isArray(s.equipped) ? s.equipped.filter(u => out.pets.some(it => it.uid === u)).slice(0, petSlots(out)) : [];
+  out.index = Object.assign({}, s.index || {});
+  out.level = Math.max(1, out.level | 0); out.xp = Math.max(0, +out.xp || 0);
+  out.boosts = { coins: Math.max(0, +(s.boosts && s.boosts.coins) || 0), luck: Math.max(0, +(s.boosts && s.boosts.luck) || 0) };
+  out.login = Object.assign({ day: '', step: 0, claimed: true }, s.login || {});
+  out.codes = Object.assign({}, s.codes || {});
+  out.wheelNext = +out.wheelNext || 0;
   // version 1 ended at the Heliopause; the goal is now Andromeda, so that win does not count any more
   if (!(s.v >= 2)) { out.won = false; out.v = 2; }
   return out;
@@ -428,18 +563,20 @@ function computeStats(save) {
   const R = ROCKET_BY_ID[save.rocket] || ROCKETS[0];
   const L = id => Math.min(save.up[id] || 0, UPG[id].max);
   const mag = L('magnet');
+  const pb = save.pets ? petBonus(save) : { coins: 0, thrust: 0, fuel: 0, magnet: 0 };
   return {
     sling: 600 * Math.pow(1.075, L('sling')),
-    thrust: 800 * Math.pow(1.03, L('engine')) * R.thrust,
-    fuel: 1.3 * Math.pow(1.04, L('tank')) * R.fuel,
+    thrust: 800 * Math.pow(1.03, L('engine')) * R.thrust * (1 + pb.thrust),
+    fuel: 1.3 * Math.pow(1.04, L('tank')) * R.fuel * (1 + pb.fuel),
     burn: Math.pow(0.97, L('eff')),
     drag: PHYS.DRAG * Math.pow(0.97, L('aero')) * R.drag,
     lift: (0.2 * L('wings') + (R.lift > 1 ? 0.6 * (R.lift - 1) : 0)),
     handling: 2.4 * (1 + 0.1 * L('steer')) * R.handling,
-    magnet: (mag ? 30 + 12 * mag : 0) + (R.magnet > 1 ? 70 * (R.magnet - 1) : 0),
+    magnet: (mag ? 30 + 12 * mag : 0) + (R.magnet > 1 ? 70 * (R.magnet - 1) : 0) + 60 * pb.magnet,
     armor: L('armor') + R.armor,
     turbo: L('turbo') + R.turbo,
-    coinMult: Math.pow(1.12, L('value')) * R.coin * rebirthMult(save.rebirths || 0),
+    coinMult: Math.pow(1.12, L('value')) * R.coin * rebirthMult(save.rebirths || 0) * (1 + pb.coins) * (1 + 0.01 * ((save.level || 1) - 1))
+      * (save.boosts && save.boosts.coins > 0 ? 2 : 1),
     luck: L('luck'),
     canRate: 1 + 0.12 * L('fuelfind'),
     canAmt: (0.22 + 0.015 * L('fuelfind')) * R.can,
@@ -552,5 +689,7 @@ if (typeof module !== 'undefined') {
     LIGHTYEAR, LIGHTSPEED, SPEED_STOPS, fuelScarcity, displaySpeed, timeLapseAt, fmtSpeedParts, fmtLapse,
     altitudeAt, speedScaleAt, coinValueAt, gravity, airDensity, windAt, SKY_STOPS, cloudDensity, UPGRADES, UPG, niceRound, upgradeCost, ROCKETS, ROCKET_BY_ID,
     MISSIONS, defaultSave, normalizeSave, computeStats, REBIRTH_ZONES, rebirthZone, rebirthMult, canRebirth, applyRebirth,
-    DAILY_POOL, dayKey, dailyReward, makeDaily, dailyText, dailyDone, angDiff, stepRocket, deNum, fmtNum, fmtAltParts, fmtAlt, fmtSpeed };
+    DAILY_POOL, dayKey, dailyReward, makeDaily, dailyText, dailyDone,
+    PET_RARITIES, PET_TYPES, EGGS, PETS, PET_BY_ID, EGG_BY_ID, PET_MAX, petPower, petBonusValue, petSlots, eggUnlocked, bestEgg, eggCompleted, petBonus,
+    hatchPet, equipBest, canFuse, fusePets, xpForLevel, flightXp, BOOSTS, boostActive, coinPack, LOGIN_REWARDS, GIFTS, WHEEL, WHEEL_EVERY, wheelPick, CODES, angDiff, stepRocket, deNum, fmtNum, fmtAltParts, fmtAlt, fmtSpeed };
 }

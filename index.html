@@ -206,6 +206,7 @@ button{font-family:inherit;color:inherit}
   #hud .tc{top:calc(70px + var(--st))}
   /* portrait phones: record under the top bar, the menu buttons in a row below it */
   #menu .tc{top:calc(74px + var(--st))}
+  #menu .goal{white-space:nowrap;font-size:13px}
   .rail{grid-auto-flow:column;left:50%;top:calc(172px + var(--st));transform:translateX(-50%);gap:14px}
   .rail-btn:hover{transform:none}
   .progress{width:calc(100vw - 32px)}
@@ -402,6 +403,131 @@ kbd{font-family:var(--ui);font-weight:600;font-size:13px;color:var(--ink);border
   .x-btn{top:10px;right:10px;width:42px;height:42px}
   .rb-lists{grid-template-columns:1fr}
 }
+/* ---------- companions, rewards, level ---------- */
+.rail.right{left:auto;right:max(16px,var(--sr))}
+.rail-btn.green{--c:#2ec4a0;--d:#16876c}
+.rail-btn.red{--c:var(--red);--d:var(--red-d)}
+.rail-btn.orange2{--c:#ff6fb0;--d:#c23a7c}
+.rail-btn .rt{font-size:13px;font-variant-numeric:tabular-nums}
+.rail-btn.red .badge,.rail-btn.orange2 .badge,.rail-btn#btnWheel .badge{background:var(--green)}
+.lvl-pill{position:relative;display:inline-grid;grid-template-columns:auto 64px;align-items:center;gap:7px;padding:5px 10px 5px 5px;border-radius:14px;background:var(--panel);border:3px solid var(--ink);box-shadow:0 4px 0 var(--ink)}
+.lvl-pill b{display:grid;place-items:center;min-width:32px;height:32px;padding:3px 5px 0;border-radius:10px;background:var(--purple);border:2px solid var(--ink);font:400 17px/1 var(--display);text-shadow:var(--o1)}
+.lvl-pill i{display:block;height:11px;border-radius:99px;background:var(--ink);overflow:hidden}
+.lvl-pill u{display:block;height:100%;width:0;background:linear-gradient(180deg,#e2c8ff,var(--purple));border-radius:99px}
+.boosts{position:absolute;top:calc(74px + var(--st));right:max(16px,var(--sr));display:grid;gap:6px;justify-items:end;pointer-events:none}
+.bchip{display:inline-flex;gap:6px;align-items:center;padding:4px 10px;border-radius:99px;background:var(--bc);border:3px solid var(--ink);box-shadow:0 3px 0 var(--ink);font-weight:600;font-size:13px;text-shadow:var(--o1)}
+.bchip b{font-variant-numeric:tabular-nums}
+.coin-ico.big{width:34px;height:34px}
+.boost-ico{display:grid;place-items:center;width:36px;height:36px;border-radius:12px;background:var(--bc);border:3px solid var(--ink);font:400 16px/1 var(--display);font-style:normal;text-shadow:var(--o1)}
+.egg-mini{display:block;width:28px;height:36px;border-radius:50% 50% 46% 46% / 60% 60% 40% 40%;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.75) 0 10%,transparent 26%),var(--c);border:3px solid var(--ink)}
+.cal{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.cal-day{position:relative;display:grid;justify-items:center;gap:5px;padding:10px 6px;border-radius:16px;background:var(--well);border:3px solid var(--ink);box-shadow:0 4px 0 var(--ink);text-align:center}
+.cal-day.big{grid-column:span 1;background:linear-gradient(180deg,#8a5cff,#5a2fc0)}
+.cal-day.now{background:linear-gradient(180deg,#5ae06f,#279a3c);transform:scale(1.04);animation:wob 1.8s ease-in-out infinite}
+.cal-day.got{opacity:.55}
+.cal-n{font:400 15px/1 var(--display);text-shadow:var(--o1)}
+.cal-t{font-size:12px;font-weight:600;line-height:1.2}
+.cal-ok{position:absolute;top:-8px;right:-6px;width:26px;height:26px;border-radius:50%;background:var(--green);border:3px solid var(--ink);display:grid;place-items:center;font-weight:700}
+.cal-note{margin:0;font-size:13px;text-align:center}
+#loginBody .btn.big,#giftBody .btn.big{justify-self:center}
+.gift-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.gift{display:grid;justify-items:center;gap:6px;padding:10px 8px;border-radius:16px;background:var(--well);border:3px solid var(--ink);box-shadow:0 4px 0 var(--ink);text-align:center}
+.gift.ready{background:linear-gradient(180deg,#5ae06f,#279a3c)}
+.gift.got{opacity:.5}
+.gift-box{width:46px;height:40px;border-radius:7px;background:linear-gradient(90deg,transparent 42%,#ffd84a 42% 58%,transparent 58%),linear-gradient(180deg,#ff6b7a,#d8283f);border:3px solid var(--ink);position:relative;margin-top:8px}
+.gift-box::before{content:"";position:absolute;left:-6px;right:-6px;top:-10px;height:12px;border-radius:5px;background:linear-gradient(90deg,#ff8b97 42%,#ffd84a 42% 58%,#ff8b97 58%);border:3px solid var(--ink)}
+.gift.ready .gift-box{animation:wob 1s ease-in-out infinite}
+.gift-r{font-size:12px;font-weight:600;line-height:1.25;min-height:30px}
+.gift-t{font:400 16px/1 var(--display);text-shadow:var(--o1);font-variant-numeric:tabular-nums}
+.gift .btn{padding:7px 12px;font-size:14px}
+.wheel-wrap{position:relative;width:min(78vw,330px);aspect-ratio:1}
+.wheel-disc{position:absolute;inset:0;border-radius:50%;border:6px solid var(--ink);box-shadow:0 7px 0 var(--ink);transition:transform 4.2s cubic-bezier(.12,.75,.12,1);overflow:hidden}
+.wheel-disc span{position:absolute;left:calc(50% - 46px);top:0;width:92px;height:50%;transform-origin:50% 100%;display:flex;justify-content:center;padding-top:14px}
+.wheel-disc b{font:400 13px/1.05 var(--display);text-shadow:var(--o1);writing-mode:vertical-rl;transform:rotate(180deg)}
+.wheel-hub{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px;border-radius:50%;background:#fff;border:5px solid var(--ink)}
+.wheel-ptr{position:absolute;left:50%;top:-14px;z-index:2;width:0;height:0;margin-left:-16px;border-left:16px solid transparent;border-right:16px solid transparent;border-top:30px solid var(--red);filter:drop-shadow(0 3px 0 var(--ink))}
+.wheel-res{min-height:24px;font:400 20px/1.1 var(--display);color:var(--gold);text-shadow:var(--o1)}
+.code-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.code-row>b{font:400 20px/1 var(--display);text-shadow:var(--o1)}
+.code-row input{flex:1 1 140px;min-width:0;font:600 16px/1 var(--ui);text-transform:uppercase;padding:10px 12px;border-radius:12px;border:3px solid var(--ink);background:#fff;color:var(--ink);-webkit-user-select:text;user-select:text}
+.code-row .muted{flex-basis:100%;font-size:13px;min-height:1em}
+.xp-line{display:flex;gap:10px;align-items:center;font-weight:600;flex-wrap:wrap}
+.xp-line b{color:var(--gold)}
+/* eggs and pets */
+.egg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.egg-card{background:var(--well);border:3px solid var(--ink);border-radius:18px;padding:12px;display:grid;gap:10px;box-shadow:0 5px 0 var(--ink)}
+.egg-card.locked{filter:saturate(.3) brightness(.8)}
+.egg-head{display:flex;gap:12px;align-items:center}
+.egg-shape{width:46px;height:58px;flex:none;border-radius:50% 50% 46% 46% / 60% 60% 40% 40%;background:radial-gradient(circle at 34% 28%,rgba(255,255,255,.8) 0 9%,transparent 24%),radial-gradient(circle at 70% 70%,rgba(0,0,0,.18),transparent 55%),var(--c);border:3px solid var(--ink);box-shadow:0 4px 0 var(--ink)}
+.egg-shape.small{width:28px;height:36px;box-shadow:none}
+.odds{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.odd{display:grid;justify-items:center;gap:2px;padding:4px 2px 5px;border-radius:12px;background:rgba(22,17,47,.35);border:2px solid var(--rc);text-align:center;min-width:0}
+.odd canvas{width:46px;height:46px}
+.odd span{font-size:10px;font-weight:600;line-height:1.1;overflow:hidden;text-overflow:ellipsis;max-width:100%;white-space:nowrap}
+.odd b{font-size:11px;color:var(--rc);text-shadow:var(--o1)}
+.pet-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.pet-sum{display:grid;gap:3px}
+.pet-sum b{font:400 20px/1 var(--display);text-shadow:var(--o1)}
+.pet-sum span{font-size:13px;font-weight:600;color:var(--muted)}
+.pet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.pet-card{position:relative;display:grid;justify-items:center;gap:3px;padding:8px 8px 10px;border-radius:18px;background:var(--well);border:3px solid var(--ink);box-shadow:0 5px 0 var(--ink),inset 0 0 0 3px var(--rc);text-align:center}
+.pet-card.eq{background:linear-gradient(180deg,#2f9a55,#1f6e3c)}
+.pet-card.golden{background:linear-gradient(180deg,#e7b521,#a97a00)}
+.pet-card canvas{width:96px;height:96px}
+.pet-name{font:400 16px/1.05 var(--display);text-shadow:var(--o1)}
+.pet-rar{font-size:12px;font-weight:700;color:var(--rc);text-shadow:var(--o1)}
+.pet-bon{font-size:13px;font-weight:600;color:var(--good);text-shadow:var(--o1)}
+.pet-act{display:flex;gap:6px;margin-top:5px;width:100%}
+.pet-act .btn{flex:1;padding:7px 6px;font-size:13px}
+.pet-act .btn.del{flex:none;width:36px;--c:var(--red);--d:var(--red-d)}
+.idx-row{background:var(--well);border:3px solid var(--ink);border-radius:18px;padding:10px 12px;margin-bottom:12px;box-shadow:0 4px 0 var(--ink)}
+.idx-row.done{background:linear-gradient(180deg,#2f9a55,#1f6e3c)}
+.idx-head{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.idx-head b{font:400 18px/1 var(--display);text-shadow:var(--o1)}
+.idx-head span{margin-left:auto;font-weight:600}
+.idx-pets{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.idx-pet{display:grid;justify-items:center;gap:2px;padding:4px;border-radius:12px;border:2px solid var(--rc);background:rgba(22,17,47,.3);font-size:11px;font-weight:600;text-align:center}
+.idx-pet canvas{width:60px;height:60px}
+/* hatching */
+.overlay.hatch{background:radial-gradient(circle at 50% 45%,rgba(255,220,120,.35),rgba(13,10,40,.85) 60%);z-index:40;align-content:center;gap:26px}
+.hatch-stage{display:flex;gap:22px;justify-content:center;flex-wrap:wrap}
+.hatch-slot{position:relative;width:200px;height:290px;display:grid;place-items:center}
+.hatch-egg{width:130px;height:166px;border-radius:50% 50% 46% 46% / 60% 60% 40% 40%;background:radial-gradient(circle at 34% 28%,rgba(255,255,255,.85) 0 9%,transparent 24%),radial-gradient(circle at 70% 70%,rgba(0,0,0,.2),transparent 55%),var(--c);border:5px solid var(--ink);box-shadow:0 8px 0 var(--ink);animation:shake .26s ease-in-out infinite}
+@keyframes shake{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(7deg) translateY(-4px)}}
+.hatch-pet{position:absolute;inset:0;display:grid;justify-items:center;align-content:center;gap:4px;opacity:0;transform:scale(.4)}
+.hatch-burst{position:absolute;left:50%;top:38%;width:260px;height:260px;margin:-130px;border-radius:50%;background:repeating-conic-gradient(var(--rc) 0 12deg,transparent 12deg 30deg);opacity:.55;animation:spin 6s linear infinite;-webkit-mask:radial-gradient(circle,#000 30%,transparent 70%);mask:radial-gradient(circle,#000 30%,transparent 70%)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hatch-pet canvas{position:relative;width:170px;height:170px}
+.hatch-pet .pet-name{position:relative;font-size:24px}
+.hatch-rar{position:relative;font:400 18px/1 var(--display);color:var(--rc);text-shadow:var(--o1);padding:5px 12px 3px;border-radius:10px;background:var(--ink)}
+.hatch-pet .pet-bon{position:relative;font-size:15px}
+.hatch-slot.open .hatch-egg{animation:crack .35s ease-in forwards}
+.hatch-slot.open .hatch-pet{animation:reveal .45s .2s cubic-bezier(.2,.9,.3,1.5) forwards}
+@keyframes crack{to{transform:scale(1.35);opacity:0;filter:brightness(2)}}
+@keyframes reveal{to{opacity:1;transform:scale(1)}}
+@media (max-width:720px){
+  .rail.right{top:calc(150px + var(--st))}
+}
+@media (max-width:560px){
+  .rail.right{grid-auto-flow:column;left:50%;right:auto;top:calc(250px + var(--st));transform:translateX(-50%);gap:14px}
+  .rail.right .rail-btn{width:58px;height:58px}
+  .rail.right .rail-btn .rl{font-size:11px}
+  .lvl-pill{grid-template-columns:auto 34px}
+  .boosts{top:calc(320px + var(--st));right:50%;transform:translateX(50%);justify-items:center}
+  #hud .boosts{top:calc(170px + var(--st))}
+  .cal{grid-template-columns:repeat(3,1fr)}
+  .odds{grid-template-columns:repeat(5,1fr);gap:4px}
+  .odd canvas{width:38px;height:38px}
+  .pet-grid{grid-template-columns:repeat(2,1fr)}
+  .hatch-slot{width:150px;height:240px}
+  .hatch-egg{width:100px;height:128px}
+  .hatch-pet canvas{width:130px;height:130px}
+}
+@media (max-height:520px){
+  .rail.right{top:calc(72px + var(--st));gap:10px}
+  .boosts{top:calc(66px + var(--st));right:calc(max(16px,var(--sr)) + 70px)}
+  .lvl-pill{display:none}
+}
 .nogl{position:fixed;inset:0;display:grid;place-items:center;padding:24px;text-align:center;z-index:50;background:var(--night)}
 </style>
 </head>
@@ -413,6 +539,7 @@ kbd{font-family:var(--ui);font-weight:600;font-size:13px;color:var(--ink);border
 <div id="menu" class="layer" hidden>
   <div class="tl">
     <button class="icon-btn" id="btnSound" aria-label="Ton an oder aus" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>
+    <div class="lvl-pill" id="lvlPill" title="Pilotenlevel: jedes Level +1 % Münzen"><b id="lvlNum">1</b><i><u id="lvlBar"></u></i></div>
     <button class="icon-btn" id="btnHelp" aria-label="Steuerung und Grafik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.6 2.6 0 0 1 5 .8c0 1.7-2.5 2.2-2.5 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg></button>
   </div>
   <div class="tc">
@@ -420,10 +547,17 @@ kbd{font-family:var(--ui);font-weight:600;font-size:13px;color:var(--ink);border
     <div class="goal" id="mGoal"></div>
   </div>
   <div class="tr"><span class="mult" id="mMult" title="Münz-Bonus durch Rebirths" hidden>×1</span><div class="pill"><i class="coin-ico"></i><span id="mCoins">0</span></div></div>
+  <div class="boosts" id="mBoosts"></div>
   <div class="rail">
     <button class="rail-btn" id="btnHangar" aria-label="Hangar: Upgrades und Raketen"><span class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.5 17.3a1.8 1.8 0 0 0 2.6 2.6l5.8-5.8a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg></span><span class="rl">Hangar</span></button>
+    <button class="rail-btn green" id="btnPets" aria-label="Begleiter und Eier"><span class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c3.6 0 6.5 5 6.5 9.5a6.5 6.5 0 0 1-13 0C5.5 8 8.4 3 12 3z"/><path d="M7 12l2 1.5 2-2 2 2 2-1.5 2 1"/></svg></span><span class="rl">Begleiter</span></button>
     <button class="rail-btn purple" id="btnMissions" aria-label="Quests"><span class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 9l1.5 1.5L13 8M9 15l1.5 1.5L13 14"/></svg></span><span class="rl">Quests</span><span class="badge" id="mBadge" hidden>0</span></button>
     <button class="rail-btn gold" id="btnRebirth" aria-label="Rebirth"><span class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg></span><span class="rl">Rebirth</span><span class="badge" id="rbBadge" hidden>!</span></button>
+  </div>
+  <div class="rail right">
+    <button class="rail-btn red" id="btnGifts" aria-label="Geschenke"><span class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="9" width="17" height="11" rx="1.5"/><path d="M2.5 9h19M12 9v11"/><path d="M12 9c-1.5-3.5-5-4.5-5-2s3 2 5 2zm0 0c1.5-3.5 5-4.5 5-2s-3 2-5 2z"/></svg></span><span class="rl rt" id="giftT">2:00</span><span class="badge" id="giftBadge" hidden>!</span></button>
+    <button class="rail-btn" id="btnWheel" aria-label="Glücksrad"><span class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13V5M12 13l6.9 4M12 13l-6.9 4"/><path d="M10 2.5h4l-2 3z" fill="currentColor"/></svg></span><span class="rl rt" id="wheelT">Gratis!</span><span class="badge" id="wheelBadge" hidden>!</span></button>
+    <button class="rail-btn orange2" id="btnLogin" aria-label="Tagesbelohnung"><span class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M9.5 15l1.8 1.8 3.4-3.6"/></svg></span><span class="rl">Täglich</span><span class="badge" id="loginBadge" hidden>!</span></button>
   </div>
   <div class="menu-bottom">
     <div class="qcards" id="qcards"></div>
@@ -464,6 +598,7 @@ kbd{font-family:var(--ui);font-weight:600;font-size:13px;color:var(--ink);border
     <div class="lapse" id="hLapse"></div>
   </div>
   <div class="tr"><div class="pill"><i class="coin-ico"></i><span id="hCoins">0</span></div></div>
+  <div class="boosts" id="hBoosts"></div>
   <div class="steer">
     <button data-steer="1" aria-label="Nase hoch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg></button>
     <button data-steer="-1" aria-label="Nase runter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l7 7 7-7"/></svg></button>
@@ -520,6 +655,51 @@ kbd{font-family:var(--ui);font-weight:600;font-size:13px;color:var(--ink);border
   </div>
 </div>
 
+<div id="pets" class="overlay" hidden>
+  <div class="sheet hangar" role="dialog" aria-label="Begleiter">
+    <button class="x-btn" id="btnPetsX" aria-label="Schließen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <header><div><div class="eyebrow">Brutstation</div><h2>Begleiter</h2></div><div class="pill"><i class="coin-ico"></i><span id="ptCoins">0</span></div></header>
+    <nav class="tabs" role="tablist">
+      <button class="tab ptab" role="tab" data-ptab="eggs" aria-selected="true">Eier</button>
+      <button class="tab ptab" role="tab" data-ptab="inv" aria-selected="false">Meine Begleiter</button>
+      <button class="tab ptab" role="tab" data-ptab="index" aria-selected="false">Sammlung</button>
+    </nav>
+    <div class="tab-body" id="petBody"></div>
+    <footer><span class="muted" id="petFoot"></span></footer>
+  </div>
+</div>
+
+<div id="hatch" class="overlay hatch" hidden>
+  <div class="hatch-stage" id="hatchStage"></div>
+  <button class="btn primary big" id="hatchOk" hidden>Super!</button>
+</div>
+
+<div id="login" class="overlay" hidden>
+  <div class="sheet" style="width:min(100%,620px)" role="dialog" aria-label="Tagesbelohnung">
+    <button class="x-btn" id="btnLoginX" aria-label="Schließen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div><div class="eyebrow">Jeden Tag</div><h2>Tagesbelohnung</h2></div>
+    <div id="loginBody" style="display:grid;gap:14px"></div>
+  </div>
+</div>
+
+<div id="gifts" class="overlay" hidden>
+  <div class="sheet" style="width:min(100%,600px)" role="dialog" aria-label="Geschenke">
+    <button class="x-btn" id="btnGiftsX" aria-label="Schließen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div><div class="eyebrow">Fürs Spielen</div><h2>Geschenke</h2></div>
+    <div id="giftBody" style="display:grid;gap:12px"></div>
+  </div>
+</div>
+
+<div id="wheel" class="overlay" hidden>
+  <div class="sheet" style="width:min(100%,460px);justify-items:center;text-align:center" role="dialog" aria-label="Glücksrad">
+    <button class="x-btn" id="btnWheelX" aria-label="Schließen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div style="justify-self:stretch;text-align:left"><div class="eyebrow">Alle 3 Stunden</div><h2>Glücksrad</h2></div>
+    <div class="wheel-wrap"><div class="wheel-ptr"></div><div class="wheel-disc" id="wheelDisc"></div><div class="wheel-hub"></div></div>
+    <div class="wheel-res" id="wheelRes"></div>
+    <button class="btn gold big" id="wheelGo">Gratis drehen!</button>
+  </div>
+</div>
+
 <div id="rebirth" class="overlay" hidden>
   <div class="sheet rebirth" role="dialog" aria-label="Rebirth">
     <button class="x-btn" id="btnRebirthX" aria-label="Schließen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -544,6 +724,7 @@ kbd{font-family:var(--ui);font-weight:600;font-size:13px;color:var(--ink);border
       <div><b>3 · Lenken</b>Die Rakete fliegt immer geradeaus. <kbd>W</kbd>/<kbd>↑</kbd> hebt die Nase, <kbd>S</kbd>/<kbd>↓</kbd> senkt sie. Auf dem Handy: Pfeile links oder mit dem Finger hoch und runter ziehen.</div>
       <div><b>4 · Sammeln</b>Kanister füllen den Tank, Ringe geben Tempo, Münzen bringen Geld für Upgrades. <kbd>Shift</kbd> zündet den Turbo.</div>
       <div><b>5 · Zeitraffer</b>Im All sind die Entfernungen riesig. Höhe und Tempo sind echt, die Zeit läuft im Zeitraffer. Der Faktor steht unter der Höhe.</div>
+      <div><b>7 · Begleiter und Belohnungen</b>Brüte mit Münzen Eier aus: Begleiter fliegen mit und geben Bonus auf Münzen, Schub, Tank oder Magnet. Fünf gleiche fusionieren zu einem goldenen. Dazu gibt es jeden Tag eine Belohnung, Geschenke fürs Spielen, alle drei Stunden das Glücksrad und Level für jeden Flug.</div>
       <div><b>6 · Quests und Rebirth</b>Unter Quests warten jeden Tag drei neue Aufgaben. Hast du das Rebirth-Ziel erreicht, kannst du neu starten: Münzen, Upgrades und Raketen sind weg, dafür gibt es für immer mehr Münzen. Die stärksten Raketen gibt es nur mit Rebirths.</div>
     </div>
     <div class="gfx-row" role="group" aria-label="Grafikqualität"><b>Grafik</b>
@@ -551,6 +732,7 @@ kbd{font-family:var(--ui);font-weight:600;font-size:13px;color:var(--ink);border
       <button class="btn" id="btnGfxLow" aria-pressed="false">Niedrig</button>
       <span class="muted" style="flex-basis:100%;font-size:12px">Hoch: Leuchteffekte, Kantenglättung, schärfere Schatten. Niedrig: flüssiger auf Handys und älteren Rechnern.</span>
     </div>
+    <div class="code-row"><b>Code</b><input id="codeIn" type="text" maxlength="24" placeholder="Code eingeben" autocomplete="off" spellcheck="false"><button class="btn gold" id="codeGo">Einlösen</button><span class="muted" id="codeMsg"></span></div>
     <p class="muted" style="margin:0;font-size:12px;line-height:1.4">Fotos: Himmel, Boden, Milchstraße und Wasser aus den <a href="https://github.com/BabylonJS/Assets" target="_blank" rel="noopener" style="color:inherit">Babylon.js Assets</a> (CC BY 4.0), Erde, Mond, Mars, Jupiter und Saturn nach NASA-Aufnahmen, Wolke von Poly Haven (CC0). 3D-Modelle von Saturn V, Jupiter-C, Ares I-X und dem Startturm aus den <a href="https://github.com/nasa/NASA-3D-Resources" target="_blank" rel="noopener" style="color:inherit">NASA 3D Resources</a> (gemeinfrei).</p>
     <button class="btn primary" id="btnHelpClose">Verstanden</button>
   </div>
@@ -572,12 +754,12 @@ kbd{font-family:var(--ui);font-weight:600;font-size:13px;color:var(--ink);border
 
 <script src="vendor/three.min.js?v=4"></script>
 <script src="vendor/three-extras.min.js?v=5"></script>
-<script src="js/core.js?v=9"></script>
+<script src="js/core.js?v=10"></script>
 <script src="js/photos.js?v=4"></script>
 <script src="js/nasa.js?v=5"></script>
 <script src="js/audio.js?v=4"></script>
-<script src="js/models.js?v=9"></script>
+<script src="js/models.js?v=10"></script>
 <script src="js/world.js?v=9"></script>
-<script src="js/game.js?v=9"></script>
+<script src="js/game.js?v=10"></script>
 </body>
 </html>
