@@ -584,13 +584,16 @@ const Models = (() => {
     g.userData.mats = g.children.filter(o => o.isMesh && o.geometry.type === 'ConeGeometry').map(o => o.material);
     return g;
   }
+  // vertex shader for the glowing shells: rim factor 0 face-on, 1 at the silhouette. Guarded so the pointed
+  // tips (zero-length normals) and rounding never produce NaN, which the bloom pass would smear into black blocks.
+  const RIM_VS = 'varying vec2 vUv; varying float vRim; void main(){ vUv = uv; vec3 n = normalMatrix * normal; float ln = length(n); n = ln > 1e-6 ? n / ln : vec3(0.0, 0.0, 1.0); vec4 mv = modelViewMatrix * vec4(position, 1.0); vec3 v = -mv.xyz; float lv = length(v); v = lv > 1e-6 ? v / lv : vec3(0.0, 0.0, 1.0); vRim = clamp(1.0 - abs(dot(n, v)), 0.0, 1.0); gl_Position = projectionMatrix * mv; }';
   // transonic vapour cone: condensation around the hull when the rocket punches through Mach 1
   // in moist, dense air; open toward the tail, densest just behind its leading edge
   function vaporCone(L, R) {
     const geo = new T.CylinderGeometry(R * 1.15, R * 3.2, L * 0.6, 40, 6, true);
     const mat = new T.ShaderMaterial({
       uniforms: { alpha: { value: 0 }, time: { value: 0 } },
-      vertexShader: 'varying vec2 vUv; varying float vRim; void main(){ vUv = uv; vec3 n = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vRim = 1.0 - abs(dot(n, normalize(-mv.xyz))); gl_Position = projectionMatrix * mv; }',
+      vertexShader: RIM_VS,
       fragmentShader: [
         'uniform float alpha; uniform float time; varying vec2 vUv; varying float vRim;',
         'void main(){',
@@ -613,11 +616,11 @@ const Models = (() => {
     pts.reverse();
     const shellMat = new T.ShaderMaterial({
       uniforms: { alpha: { value: 0 }, time: { value: 0 } },
-      vertexShader: 'varying vec2 vUv; varying float vRim; void main(){ vUv = uv; vec3 n = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vRim = 1.0 - abs(dot(n, normalize(-mv.xyz))); gl_Position = projectionMatrix * mv; }',
+      vertexShader: RIM_VS,
       fragmentShader: [
         'uniform float alpha; uniform float time; varying vec2 vUv; varying float vRim;',
         'void main(){',
-        '  float front = vUv.y;',                                   // 1 at the stagnation point, 0 at the trailing edge
+        '  float front = clamp(vUv.y, 0.0, 1.0);',                                   // 1 at the stagnation point, 0 at the trailing edge
         '  vec3 col = mix(vec3(0.85, 0.18, 0.6), vec3(1.0, 0.42, 0.12), smoothstep(0.15, 0.55, front));',
         '  col = mix(col, vec3(1.0, 0.78, 0.45), smoothstep(0.8, 1.0, front));',
         '  float flick = 0.8 + 0.2 * sin(time * 37.0 + vUv.x * 40.0) * sin(time * 23.0 - vUv.y * 17.0);',
@@ -629,11 +632,11 @@ const Models = (() => {
     g.add(new T.Mesh(lathe(pts, 40), shellMat));
     const wakeMat = new T.ShaderMaterial({
       uniforms: { alpha: { value: 0 }, time: { value: 0 } },
-      vertexShader: 'varying vec2 vUv; varying float vRim; void main(){ vUv = uv; vec3 n = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vRim = 1.0 - abs(dot(n, normalize(-mv.xyz))); gl_Position = projectionMatrix * mv; }',
+      vertexShader: RIM_VS,
       fragmentShader: [
         'uniform float alpha; uniform float time; varying vec2 vUv; varying float vRim;',
         'void main(){',
-        '  float along = vUv.y;',                                    // 1 at the tail, 0 far behind
+        '  float along = clamp(vUv.y, 0.0, 1.0);',                                    // 1 at the tail, 0 far behind
         '  float streak = 0.45 + 0.55 * sin(vUv.x * 60.0 + time * 13.0 + along * 11.0) * sin(vUv.x * 23.0 - time * 7.0);',
         '  vec3 col = mix(vec3(0.6, 0.18, 0.75), vec3(1.0, 0.5, 0.2), pow(along, 2.0));',
         '  float core = 1.0 - 0.75 * vRim;',                          // a glowing gas column is brightest down its middle
@@ -1227,7 +1230,8 @@ const Models = (() => {
         '  float glow = exp(-max(h, 0.0) * 3.2) * (1.0 - smoothstep(0.85, 1.0, h));',
         // from inside the air (low orbit) only rays toward the planet cross much of it: looking up stays black
         '  glow *= smoothstep(-0.12, 0.03, dot(d, normalize(oc)));',
-        '  float day = dot(normalize(closest - o), sunDir);',
+        '  vec3 up = closest - o; float lu = length(up);',
+        '  float day = lu > 1e-4 * R0 ? dot(up / lu, sunDir) : 1.0;',
         '  vec3 col = mix(vec3(1.0, 0.45, 0.2), vec3(0.32, 0.6, 1.0), smoothstep(-0.05, 0.35, day));',
         '  float lit = smoothstep(-0.35, 0.15, day);',
         '  gl_FragColor = vec4(col * glow * (0.08 + 1.1 * lit), 1.0);',
